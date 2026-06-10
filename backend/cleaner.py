@@ -375,7 +375,7 @@ def _run_execute(root: str, dry_run: bool):
                     f"démarrée — {total} fichier(s) ciblé(s)")
 
         update_state(
-            app_state=AppState.SYNCING,
+            app_state=AppState.SYNCING, method="cleanup_db",
             current_file="Nettoyage en cours…",
             progress=0, processed=0, total=total,
             sync_done=0, sync_errors=0, sync_simulated=0,

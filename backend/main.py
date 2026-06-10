@@ -210,7 +210,7 @@ def api_sync(req: SyncRequest):
 def api_abort():
     state = get_state()
     if state["app_state"] in (AppState.SCANNING, AppState.COMPARING, AppState.VERIFYING):
-        stop_scan(); stop_cleanup()
+        stop_scan(); stop_tag_scan(); stop_cleanup()
     elif state["app_state"] == AppState.SYNCING:
         stop_sync(); stop_cleanup()
     else:
