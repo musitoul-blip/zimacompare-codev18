@@ -213,6 +213,7 @@ export default function TabScanSync({ status }) {
   const [resultsNonce, setResultsNonce] = useState(0)
   const [hideResults, setHideResults] = useState(false)
   const [preview, setPreview] = useState(null)
+  const [exts, setExts] = useState([])
   const [busy,     setBusy]     = useState(false)
   const [msg,      setMsg]      = useState(null)
   const [view,     setView]     = useState('stats')
@@ -249,7 +250,7 @@ export default function TabScanSync({ status }) {
   }, [status?.app_state])
 
   useEffect(() => {
-    if (!filterOn || !filterText.trim() || !source) { setPreview(null); setHideResults(false); return }
+    if (!filterText.trim() || !source) { setPreview(null); setHideResults(false); return }
     setHideResults(true)
     const t = setTimeout(() => {
       api.scanDirs({ source, filter: filterText.trim() }).then(setPreview).catch(() => setPreview(null))
@@ -265,10 +266,10 @@ export default function TabScanSync({ status }) {
 
   async function doScan() {
     if (!source || !target) return notify('Choisissez source et cible', false)
-    if (filterOn && filterText.trim()) {
+    if (filterText.trim()) {
       try { const r = await api.scanDirs({ source, filter: filterText.trim() }); if (!r || !r.count) { setHideResults(true); return notify("Aucun dossier ne correspond au filtre : " + filterText.trim(), false) } } catch(e) {}
     }
-    try { setBusy(true); setHideResults(false); await api.scan({ source, target, method, filter: filterOn ? filterText : "" }); notify('Scan démarré') }
+    try { setBusy(true); setHideResults(false); await api.scan({ source, target, method, filter: filterText.trim(), ext_filter: exts.join(",") }); notify('Scan démarré') }
     catch(e) { notify(e.message, false) } finally { setBusy(false) }
   }
 
@@ -446,23 +447,29 @@ export default function TabScanSync({ status }) {
         </div>
         <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
           <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap", marginBottom:12, flexBasis:"100%" }}>
-            <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:13, cursor:"pointer" }}>
-              <input type="checkbox" checked={filterOn} onChange={e => setFilterOn(e.target.checked)} style={{ accentColor:"var(--accent)" }} />
-              🔎 Filtrer par nom de dossier
-            </label>
-            <input type="text" value={filterText} onChange={e => setFilterText(e.target.value)} placeholder="ex : willy" disabled={!filterOn} style={{ flex:1, minWidth:160, padding:"6px 10px", background:"var(--bg)", border:"1px solid var(--border)", borderRadius:6, color:"var(--text)", opacity: filterOn ? 1 : 0.5 }} />
+            <span style={{ fontSize:12, color:"var(--muted)" }}>🔎 Filtrer par nom de dossier</span>
+            <input type="text" value={filterText} onChange={e => setFilterText(e.target.value)} placeholder="ex. : indo, abba, live…" style={{ flex:1, minWidth:200, padding:"8px 10px", borderRadius:8, border:"1px solid rgba(128,128,128,.35)", background:"transparent", color:"inherit", fontSize:14 }} />
           </div>
-          {filterOn && filterText.trim() && preview && (
+          <div style={{ display:"flex", gap:14, alignItems:"center", flexWrap:"wrap", marginBottom:12, flexBasis:"100%", fontSize:13 }}>
+            <span style={{ color:"var(--muted)" }}>🎵 Extensions :</span>
+            {[["mp3","🎵 MP3"],["flac","💿 FLAC"],["m4a","🍎 M4A"]].map(([k,lbl]) => (
+              <span key={k} onClick={() => setExts(exts.includes(k) ? exts.filter(v => v !== k) : [...exts, k])} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:20, border:"1px solid " + (exts.includes(k) ? "#2E86AB" : "rgba(128,128,128,.35)"), background: exts.includes(k) ? "rgba(46,134,171,.15)" : "transparent", cursor:"pointer", userSelect:"none", fontSize:14 }}>
+                <input type="checkbox" checked={exts.includes(k)} readOnly style={{ pointerEvents:"none" }} /> {lbl}
+              </span>
+            ))}
+            {exts.length === 0 && <span style={{ color:"var(--muted)", fontSize:12 }}>(toutes si aucune cochee)</span>}
+          </div>
+          {filterText.trim() && preview && (
             <div style={{ marginBottom:12, fontSize:13, flexBasis:"100%" }}>
               {preview.count === 0 ? (
                 <div style={{ color:"var(--danger)", padding:"8px 12px", background:"var(--bg)", borderRadius:6, border:"1px solid var(--danger)" }}>Aucun dossier ne correspond au filtre : {filterText.trim()}</div>
               ) : (
                 <div>
-                  <div style={{ color:"var(--success)", marginBottom:6 }}>🔎 Périmètre : {preview.count} dossier(s) / {preview.total_files} fichier(s)</div>
+                  <div style={{ color:"var(--success)", marginBottom:6 }}>🔎 Périmètre : {preview.count} dossier(s) / {exts.length ? preview.dirs.reduce((s2,d) => s2 + exts.reduce((a,e) => a + (d[e] || 0), 0), 0) : preview.total_files} fichier(s)</div>
                   <div style={{ maxHeight:180, overflowY:"auto", border:"1px solid var(--border)", borderRadius:6 }}>
                     {preview.dirs.map(d => (
                       <div key={d.name} style={{ display:"flex", justifyContent:"space-between", padding:"4px 10px", borderBottom:"1px solid var(--border)", fontSize:12 }}>
-                        <span>{d.name}</span><span style={{ color:"var(--muted)" }}>{d.total}</span>
+                        <span>{d.name}</span><span style={{ color:"var(--muted)" }}>{exts.length ? exts.reduce((a,e) => a + (d[e] || 0), 0) : d.total}</span>
                       </div>
                     ))}
                   </div>
@@ -478,6 +485,9 @@ export default function TabScanSync({ status }) {
             <button className="btn-danger" onClick={doAbort} style={{ fontSize:14, padding:'10px 20px' }}>
               ⏹ ARRÊTER ({status?.app_state})
             </button>
+          )}
+          {!isActive && (!source || !target) && (
+            <span style={{ color:"var(--danger)", fontSize:12 }}>⚠ Choisis source et cible pour lancer</span>
           )}
           <span style={{ flex:1 }} />
           <button className="btn-ghost" onClick={() => api.discover().then(setPaths).catch(()=>{})}>

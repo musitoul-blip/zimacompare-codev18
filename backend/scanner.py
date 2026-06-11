@@ -65,7 +65,7 @@ _IGNORED_LIST_CAP = 10_000
 
 
 def _scandir_recursive(directory: Path, spec, label: str,
-                       individual_specs=None, ignored_sink: List[dict] = None, name_filter: str = ""
+                       individual_specs=None, ignored_sink: List[dict] = None, name_filter: str = "", ext_filter=None
                        ) -> Tuple[Dict[str, Tuple[int, float, bool]], int]:
     """Parcourt récursivement `directory` en honorant le `spec` PathSpec
     (gitignore-style). Retourne (entries, ignored_count).
@@ -132,6 +132,8 @@ def _scandir_recursive(directory: Path, spec, label: str,
                             out[rel] = (0, st.st_mtime, True)
                             _walk(full)
                         else:
+                            if ext_filter and os.path.splitext(entry.name)[1].lower().lstrip(".") not in ext_filter:
+                                continue
                             out[rel] = (st.st_size, st.st_mtime, False)
                         count += 1
                         if count % 1000 == 0:
@@ -168,10 +170,11 @@ def _write_ignored_files(entries: List[dict], capped: bool, total: int):
         logger.warning(f"[SCAN] Impossible d'écrire {IGNORED_FILES_JSON.name}: {e}")
 
 
-def _run_scan(source: str, target: str, method: str, chunk_mb: int, name_filter: str = ""):
+def _run_scan(source: str, target: str, method: str, chunk_mb: int, name_filter: str = "", ext_filter=None):
     src = Path(source)
     tgt = Path(target)
     _nf = (name_filter or "").strip().lower()
+    _ef = {e.strip().lower().lstrip(".") for e in (ext_filter or "").replace(";", ",").split(",") if e.strip()}
     # v3.12 — compile la spec gitignore une fois pour tout le scan
     patterns = load_ignore_patterns()
     spec = compile_ignore_spec(patterns)
@@ -208,7 +211,7 @@ def _run_scan(source: str, target: str, method: str, chunk_mb: int, name_filter:
 
         t0 = time.monotonic()
         src_entries, src_ignored = _scandir_recursive(
-            src, spec, "source", individual_specs, ignored_sink, _nf)
+            src, spec, "source", individual_specs, ignored_sink, _nf, _ef)
         if _stop_event.is_set():
             update_state(app_state=AppState.IDLE, current_file="Annulé", progress=0); return
         t1 = time.monotonic()
@@ -219,7 +222,7 @@ def _run_scan(source: str, target: str, method: str, chunk_mb: int, name_filter:
                      fps=0, eta_seconds=0,  # débit non pertinent ici
                      ignored_count=src_ignored)
         tgt_entries, tgt_ignored = _scandir_recursive(
-            tgt, spec, "cible", individual_specs, ignored_sink, _nf)
+            tgt, spec, "cible", individual_specs, ignored_sink, _nf, _ef)
         if _stop_event.is_set():
             update_state(app_state=AppState.IDLE, current_file="Annulé", progress=0); return
         t2 = time.monotonic()
@@ -385,7 +388,7 @@ def _run_scan(source: str, target: str, method: str, chunk_mb: int, name_filter:
 
 
 def start_scan(source: str, target: str, method: str, chunk_mb: int = 4,
-               clear_verification: bool = True, name_filter: str = "") -> bool:
+               clear_verification: bool = True, name_filter: str = "", ext_filter: str = "") -> bool:
     """Lance un scan en thread daemon.
     `clear_verification` : si False, on garde le champ sync_verified (utilisé
     par la vérification post-sync automatique pour ne pas écraser le résultat)."""
@@ -395,13 +398,13 @@ def start_scan(source: str, target: str, method: str, chunk_mb: int = 4,
         return False
     _stop_event.clear()
 
-    payload = dict(source=source, target=target, method=method, scan_filter=name_filter, error="",
+    payload = dict(source=source, target=target, method=method, scan_filter=name_filter, scan_ext=ext_filter, error="",
                    sync_done=0, sync_errors=0, sync_simulated=0)
     if clear_verification:
         payload.update(sync_verified="", sync_verified_msg="")
     update_state(**payload)
 
-    t = threading.Thread(target=_run_scan, args=(source, target, method, chunk_mb, name_filter), daemon=True)
+    t = threading.Thread(target=_run_scan, args=(source, target, method, chunk_mb, name_filter, ext_filter), daemon=True)
     t.start()
     return True
 
