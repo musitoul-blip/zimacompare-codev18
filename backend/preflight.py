@@ -32,12 +32,16 @@ def check_target_writable(target: str) -> Tuple[bool, str]:
     test_path = Path(target) / WRITE_TEST_FILE
     try:
         test_path.write_text(f"zima_write_test_{time.time()}")
-        test_path.unlink()
         return True, ""
     except PermissionError:
         return False, f"Droits d'écriture insuffisants sur la cible : {target}"
     except Exception as e:
         return False, f"Erreur test écriture sur {target} : {e}"
+    finally:
+        try:
+            test_path.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def check_disk_space(source: str, target: str, bytes_to_copy: int) -> Tuple[bool, str]:

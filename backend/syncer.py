@@ -69,16 +69,18 @@ class SyncAction:
 def _plan(scan_results, source, target, mirror_deletes) -> List[SyncAction]:
     actions: List[SyncAction] = []
     for r in scan_results:
-        rel = r["relative_path"]
+        rel = r.get("relative_path")
+        if not rel:
+            continue
         src = os.path.join(source, rel)
         tgt = os.path.join(target, rel)
-        is_dir = r["is_dir"]; st = r["status"]
+        is_dir = r.get("is_dir", False); st = r.get("status", "")
         if st == "new":
-            actions.append(SyncAction("mkdir" if is_dir else "copy", rel, src, tgt, r["source_size"]))
+            actions.append(SyncAction("mkdir" if is_dir else "copy", rel, src, tgt, r.get("source_size", 0)))
         elif st == "different" and not is_dir:
-            actions.append(SyncAction("copy", rel, src, tgt, r["source_size"]))
+            actions.append(SyncAction("copy", rel, src, tgt, r.get("source_size", 0)))
         elif st == "deleted" and mirror_deletes:
-            actions.append(SyncAction("rmdir" if is_dir else "delete", rel, src, tgt, r["target_size"]))
+            actions.append(SyncAction("rmdir" if is_dir else "delete", rel, src, tgt, r.get("target_size", 0)))
     depth = lambda a: a.relative_path.count(os.sep)
     return (sorted([a for a in actions if a.action == "mkdir"], key=depth)
             + [a for a in actions if a.action == "copy"]
@@ -240,8 +242,6 @@ def _run_sync(source, target, dry_run, verify, mirror_deletes, max_workers, auto
                 futures = {pool.submit(_exec_action, a, dry_run, verify, target, guard): a
                            for a in batch}
                 for fut in as_completed(futures):
-                    if _stop_event.is_set():
-                        pool.shutdown(wait=False, cancel_futures=True); break
                     try:
                         a = fut.result()
                     except TargetMountLost as e:
@@ -261,7 +261,9 @@ def _run_sync(source, target, dry_run, verify, mirror_deletes, max_workers, auto
                                  progress=int(processed/total*100),
                                  current_file=a.relative_path,
                                  fps=round(fps, 1), eta_seconds=eta,
-                                 sync_done=done_c, sync_errors=err_c, sync_simulated=sim_c)
+                                sync_done=done_c, sync_errors=err_c, sync_simulated=sim_c)
+                    if _stop_event.is_set():
+                        pool.shutdown(wait=False, cancel_futures=True); break
 
         try:
             _process(seq, 1)

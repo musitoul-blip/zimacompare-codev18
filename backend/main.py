@@ -564,12 +564,9 @@ def api_smart_devices():
 def api_smart_device(device_name: str):
     """Détail d'un device. `device_name` est le suffixe (ex: 'sda'), on
     reconstitue /dev/<device_name> avec validation stricte."""
-    # Sécurité : pattern strict pour éviter toute injection
-    if not device_name.replace("nvme", "").replace("sd", "").replace("hd", "") \
-            .replace("p", "").isalnum() if device_name else True:
-        if not all(c.isalnum() for c in device_name):
-            raise HTTPException(400, "Nom de device invalide")
-    if "/" in device_name or ".." in device_name:
+    # RC10: validation simple et stricte -- nom de device alphanumerique
+    # (sda, sdb1, nvme0n1). isalnum() exclut deja les separateurs et points.
+    if not device_name or not device_name.isalnum():
         raise HTTPException(400, "Nom de device invalide")
     device = f"/dev/{device_name}"
     info = smartinfo.get_device_smart(device, use_cache=False)
