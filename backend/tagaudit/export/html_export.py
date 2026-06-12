@@ -285,7 +285,7 @@ def export_to_html():
 
     # ---- header ----
     p.append("<header class='zhead'>")
-    p.append("<div><h1>ZimaTAG &middot; rapport d'audit</h1>")
+    p.append(f"<div><h1>ZimaCompare&Tag v{APP_VERSION} &middot; rapport d'audit</h1>")
     p.append(f"<p class='zsub'>{total} fichiers &middot; {n_albums} albums &middot; genere le {now}</p></div>")
     p.append("<div class='zhead-r'>")
     p.append("<button id='zth' class='zbtn' onclick='ztTheme()' aria-label='theme'>clair / sombre</button>")

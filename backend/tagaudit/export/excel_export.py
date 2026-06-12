@@ -86,9 +86,9 @@ class ExcelExporter:
     
     # Seuils Bluesound Node : pochettes optimales à afficher sur le streamer
     # Au-delà de ces limites, la pochette risque de ne pas s'afficher correctement.
-    BLUESOUND_MAX_WIDTH = 600      # pixels
-    BLUESOUND_MAX_HEIGHT = 600     # pixels
-    BLUESOUND_MAX_SIZE_KB = 500    # kilo-octets
+    BLUESOUND_MAX_WIDTH = 1200      # pixels
+    BLUESOUND_MAX_HEIGHT = 1200     # pixels
+    BLUESOUND_MAX_SIZE_KB = 600    # kilo-octets
 
     # Groupes d'onglets thématiques
     SHEET_GROUPS = {
@@ -505,11 +505,11 @@ class ExcelExporter:
     
     def _compute_covers_bluesound_oversized(self) -> pd.DataFrame:
         """Retourne la liste des titres dont la pochette dépasse les limites
-        Bluesound Node (600×600 px ET/OU 500 Ko).
+        Bluesound Node (1200×1200 px ET/OU 600 Ko).
         
         Pour qu'une pochette s'affiche de façon optimale sur un streamer
-        Bluesound, elle doit idéalement être JPG, 600×600 px maximum et
-        moins de 500 Ko.
+        Bluesound, elle doit idéalement être JPG, 1200×1200 px maximum et
+        moins de 600 Ko.
         
         Ce DataFrame inclut tout fichier qui dépasse au moins UNE de ces
         deux contraintes (pixels OU poids). Une colonne 'raison' indique
@@ -563,7 +563,7 @@ class ExcelExporter:
                     w = int(pd.to_numeric(row.get('cover_width'), errors='coerce') or 0)
                     h = int(pd.to_numeric(row.get('cover_height'), errors='coerce') or 0)
                     if w > self.BLUESOUND_MAX_WIDTH or h > self.BLUESOUND_MAX_HEIGHT:
-                        reasons.append(f'{w}×{h}px > 600×600')
+                        reasons.append(f'{w}×{h}px > {self.BLUESOUND_MAX_WIDTH}×{self.BLUESOUND_MAX_HEIGHT}')
                 except (TypeError, ValueError):
                     pass
             if has_size:
@@ -571,7 +571,7 @@ class ExcelExporter:
                     s_bytes = int(pd.to_numeric(row.get('cover_size'), errors='coerce') or 0)
                     s_kb = s_bytes / 1024
                     if s_bytes > self.BLUESOUND_MAX_SIZE_KB * 1024:
-                        reasons.append(f'{s_kb:.0f} Ko > 500 Ko')
+                        reasons.append(f'{s_kb:.0f} Ko > {self.BLUESOUND_MAX_SIZE_KB} Ko')
                 except (TypeError, ValueError):
                     pass
             return ' & '.join(reasons) if reasons else ''
