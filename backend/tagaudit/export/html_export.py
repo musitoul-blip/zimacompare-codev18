@@ -77,6 +77,11 @@ def _ezcd_uri(winpath):
     return "ezcd:" + quote(winpath, safe="")
 
 
+def _dir_uri(winpath):
+    # protocole perso zimadir: -> ouvre le dossier dans l explorateur Windows
+    return "zimadir:" + quote(winpath, safe="")
+
+
 def _clean_label(name):
     return re.sub(r"^[^0-9A-Za-zÀ-ÿ]+", "", str(name)).strip()
 
@@ -284,7 +289,8 @@ def _links_cell(folder):
         f"<div class='zpathline'><span class='zpath'>{_html.escape(win)}</span>"
         f"<button class='zbtn zmini' onclick=\"ztCopy(this,'{winj}')\">copier</button>"
         f"<a class='zlink' href=\"{_html.escape(_file_uri(win))}\">ouvrir</a>"
-        f"<a class='zlink zezcd' href=\"{_html.escape(_ezcd_uri(win))}\" title='ouvrir ce dossier dans Mp3tag'>Mp3tag</a></div>"
+        f"<a class='zlink zezcd' href=\"{_html.escape(_ezcd_uri(win))}\" title='ouvrir ce dossier dans Mp3tag'>Mp3tag</a>"
+        f"<a class='zlink zexp' href=\"{_html.escape(_dir_uri(win))}\" title='ouvrir le dossier dans l explorateur'>📂 Explorer</a></div>"
     )
 
 
@@ -438,7 +444,8 @@ def export_to_html():
             f"<div class='zpathline'><span class='zpath'>{_html.escape(r['win'])}</span>"
             f"<button class='zbtn zmini' onclick=\"ztCopy(this,'{winj}')\">copier</button>"
             f"<a class='zlink' href=\"{_html.escape(r['uri'])}\">ouvrir</a>"
-            f"<a class='zlink zezcd' href=\"{_html.escape(r['ezcd'])}\" title='ouvrir ce dossier dans Mp3tag'>Mp3tag</a></div></div>"
+            f"<a class='zlink zezcd' href=\"{_html.escape(r['ezcd'])}\" title='ouvrir ce dossier dans Mp3tag'>Mp3tag</a>"
+            f"<a class='zlink zexp' href=\"{_html.escape(_dir_uri(r['win']))}\" title='ouvrir le dossier dans l explorateur'>📂 Explorer</a></div></div>"
             f"<div class='zrow-n zmut'>{r['n']} fichiers</div></div>"
         )
     p.append("</div></div>")
@@ -539,6 +546,7 @@ font-size:12px;cursor:pointer}
 .zlink{font-size:12px;color:#2E86AB;text-decoration:none}
 .zlink:hover{text-decoration:underline}
 .zezcd{color:#D85A30;font-weight:600}
+.zexp{color:#2E7D32;font-weight:600}
 .ztw{overflow:auto;max-height:440px;border:1px solid var(--zborder);border-radius:8px}
 table.ztbl{border-collapse:collapse;width:100%;font-size:12.5px}
 table.ztbl thead th{position:sticky;top:0;background:var(--zbg);color:var(--zfg);text-align:left;padding:7px 9px;
