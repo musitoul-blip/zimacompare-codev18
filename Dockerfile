@@ -82,5 +82,11 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/rclone/run \
              /etc/s6-overlay/s6-rc.d/uvicorn/run \
              /etc/s6-overlay/s6-rc.d/nginx/run
 
+ARG GIT_DESCRIBE=unknown
+ARG GIT_BRANCH=unknown
+ARG BUILD_DATE=unknown
+ARG IMAGE_TAG=unknown
+ENV BUILD_GIT_DESCRIBE=$GIT_DESCRIBE BUILD_GIT_BRANCH=$GIT_BRANCH BUILD_DATE=$BUILD_DATE BUILD_IMAGE_TAG=$IMAGE_TAG
+
 EXPOSE 8513
 ENTRYPOINT ["/init"]

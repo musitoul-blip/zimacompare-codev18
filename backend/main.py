@@ -863,6 +863,11 @@ def api_export_context():
         "selfcheck":     selfcheck_summary,
         "audits":        {"count": len(_audits), "registered": _audits},
         "thresholds":    thresholds,
+        "build":         {"git_describe": os.environ.get("BUILD_GIT_DESCRIBE", "?"),
+                          "git_branch": os.environ.get("BUILD_GIT_BRANCH", "?"),
+                          "build_date": os.environ.get("BUILD_DATE", "?"),
+                          "image_tag": os.environ.get("BUILD_IMAGE_TAG", "?"),
+                          "note": "provenance gravee au build ; digest (registry) et git live de l hote hors portee du conteneur"},
         "notes_for_assistant": (
             "État complet d'une instance ZimaCompare&Tag. Pour reprendre une session de dev : "
             "cloner le dépôt git (codevN, voir 'git') et redéployer via compose-install.yml ; "
