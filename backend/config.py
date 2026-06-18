@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import List
 
 APP_DATA_ROOT      = Path("/app_data")
-APP_VERSION         = "3.10.0"
+APP_VERSION         = "3.11.0"
 CONFIG_FILE        = APP_DATA_ROOT / "config.json"
 STATE_FILE         = APP_DATA_ROOT / "app_state.json"
 SCAN_CSV           = APP_DATA_ROOT / "scan_results.csv"

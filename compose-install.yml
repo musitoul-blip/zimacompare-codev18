@@ -1,8 +1,8 @@
-name: zimacompare-v12
+name: zimacompare-v13
 services:
   zimacompare:
-    container_name: zimacompare-v12
-    image: ghcr.io/musitoul-blip/zimacompare-aio:v12
+    container_name: zimacompare-v13
+    image: ghcr.io/musitoul-blip/zimacompare-aio:v13
     restart: unless-stopped
     cpu_shares: 90
     privileged: true
@@ -10,8 +10,8 @@ services:
       - /dev/fuse
     stop_grace_period: 30s
     ports:
-      - target: 8513
-        published: "8513"
+      - target: 8514
+        published: "8514"
         protocol: tcp
     environment:
       - TZ=Europe/Paris
@@ -21,17 +21,17 @@ services:
       - RCLONE_RC_PASS=${RCLONE_RC_PASS}
       - RCLONE_RC_URL=http://127.0.0.1:5572
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8513/api/health > /dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:8514/api/health > /dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       start_period: 20s
       retries: 3
     volumes:
       - type: bind
-        source: /DATA/AppData/zimacompare-v12/data
+        source: /DATA/AppData/zimacompare-v13/data
         target: /app_data
       - type: bind
-        source: /DATA/AppData/zimacompare-v12/rclone
+        source: /DATA/AppData/zimacompare-v13/rclone
         target: /config/rclone
       - type: bind
         source: /media/HDD-Storage1
@@ -72,7 +72,7 @@ services:
           description:
             en_us: rclone remote-control password
       ports:
-        - container: "8513"
+        - container: "8514"
           description:
             en_us: ZimaCompare Web UI
       volumes:
@@ -122,11 +122,11 @@ x-casaos:
     en_us: File sync with pCloud — single-container AIO, zero SSH setup
   title:
     custom: ""
-    en_us: ZimaCompare&Tag v12
+    en_us: ZimaCompare&Tag v13
   index: /
-  port_map: "8513"
+  port_map: "8514"
   scheme: http
   hostname: ""
   is_uncontrolled: false
-  store_app_id: zimacompare-v12
+  store_app_id: zimacompare-v13
   icon: https://filedn.eu/lXD7ErB2q6Sp19LoIrttSsj/ZimaCompare%26Tag/icon.png
