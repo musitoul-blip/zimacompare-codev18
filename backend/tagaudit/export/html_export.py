@@ -421,15 +421,17 @@ def export_to_html():
             _lab = _clean_label(_sn)
             if _lab and _lab not in _seen:
                 _seen.add(_lab)
-                _cats_all.append(_lab)
+                _cats_all.append((_lab, _g, _dk))
+    _cats_all.sort(key=lambda _t: 0 if _catc.get(_t[0], 0) else 1)
     if _cats_all:
         p.append("<div class='zcats'>")
         p.append("<span class='zmut' style='font-size:12px;margin-right:4px'>Filtrer par categorie :</span>")
-        for _lab in _cats_all:
+        for _lab, _gg, _dk2 in _cats_all:
             _cnt = _catc.get(_lab, 0)
             _v = _html.escape(_lab.strip().lower(), quote=True)
             _cls = "zcat" if _cnt else "zcat zcat0"
-            p.append("<label class='%s'><input type='checkbox' class='zcatcb' value='%s'> %s <span class='zmut'>(%d)</span></label>" % (_cls, _v, _html.escape(_lab), _cnt))
+            _go = "<a class='zcatgo' href='#zcard-%s' data-t='%s' data-card='zcard-%s' title='voir le detail'>&#8599;</a>" % (_html.escape(_dk2, quote=True), _html.escape(_gg, quote=True), _html.escape(_dk2, quote=True))
+            p.append("<span class='zcatwrap'><label class='%s'><input type='checkbox' class='zcatcb' value='%s'> %s <span class='zmut'>(%d)</span></label>%s</span>" % (_cls, _v, _html.escape(_lab), _cnt, _go))
         p.append("</div>")
     p.append("<p class='zmut' style='font-size:12px'>Clique <b>copier</b> puis colle le chemin dans l'Explorateur / EZ CD. Le lien <i>ouvrir</i> ne fonctionne que si tu as <b>telecharge</b> ce rapport et l'ouvres en fichier local (mieux dans Firefox).</p>")
     p.append("<div id='dirList'>")
@@ -464,7 +466,7 @@ def export_to_html():
             is_info = data_key in INFO_KEYS
             badge_cls = "zb-ok" if (is_info or not n) else "zb-danger"
             info_tag = " <span class='zmut' style='font-size:11px;font-weight:400'>info</span>" if is_info else ""
-            p.append("<div class='zcard'>")
+            p.append(f"<div class='zcard' id='zcard-{data_key}'>")
             p.append(f"<div class='zcard-h'><h3>{_html.escape(_clean_label(sheet_name))}{info_tag}</h3>"
                      f"<span class='zb {badge_cls}'>{n}</span></div>")
             if isinstance(data, pd.DataFrame) and not data.empty:
@@ -520,9 +522,12 @@ color:var(--zmut);cursor:pointer}
 border-radius:8px;background:var(--zsurf);color:var(--zfg);font-size:13px;outline:none}
 .zflt{max-width:none;margin-bottom:10px}
 .zcats{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin:0 0 12px}
-.zcat{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--zfg);background:var(--zsurf);border:1px solid var(--zborder);border-radius:8px;padding:4px 9px;cursor:pointer}
+.zcatwrap{display:inline-flex;align-items:center;gap:3px}
+.zcat{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#d9534f;background:rgba(217,83,79,.12);border:1px solid #d9534f;border-radius:8px;padding:4px 9px;cursor:pointer}
 .zcat input{margin:0}
-.zcat0{opacity:.6}
+.zcat0{color:#2e9e5b;background:rgba(46,158,91,.12);border-color:#2e9e5b;opacity:1}
+.zcatgo{font-size:12px;line-height:1;text-decoration:none;color:var(--zfg);opacity:.6;border:1px solid var(--zborder);border-radius:6px;padding:3px 6px;cursor:pointer}
+.zcatgo:hover{opacity:1;border-color:var(--zfg)}
 .zrow{display:flex;gap:12px;align-items:flex-start;padding:12px;border:1px solid var(--zborder);border-radius:12px;
 background:var(--zsurf);margin-bottom:10px}
 .zrow-m{flex:1;min-width:0}
@@ -576,6 +581,7 @@ document.querySelectorAll('.ztab').forEach(function(x){x.classList.remove('activ
 document.querySelectorAll('.zpanel').forEach(function(x){x.classList.remove('active');});
 b.classList.add('active');var pn=document.querySelector(".zpanel[data-p='"+b.getAttribute('data-t')+"']");
 if(pn)pn.classList.add('active');window.scrollTo(0,0);});});
+document.querySelectorAll('.zcatgo').forEach(function(a){a.addEventListener('click',function(e){e.preventDefault();var t=a.getAttribute('data-t');document.querySelectorAll('.ztab').forEach(function(x){x.classList.remove('active');});document.querySelectorAll('.zpanel').forEach(function(x){x.classList.remove('active');});var tb=document.querySelector(".ztab[data-t='"+t+"']");if(tb)tb.classList.add('active');var pn=document.querySelector(".zpanel[data-p='"+t+"']");if(pn)pn.classList.add('active');var c=document.getElementById(a.getAttribute('data-card'));if(c)c.scrollIntoView({behavior:'smooth',block:'start'});});});
 (function(){var ds=document.getElementById('dirSearch'),po=document.getElementById('prioOnly');
 var cbs=Array.prototype.slice.call(document.querySelectorAll('.zcatcb'));
 function flt(){var q=(ds.value||'').toLowerCase(),prio=po.checked;
