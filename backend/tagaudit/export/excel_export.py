@@ -1090,6 +1090,36 @@ officiel, sous réserve d'évolution de l'outil.
     # ==================================================================
     # Cockpit
     # ==================================================================
+    def _cockpit_logo_imgdata(self, height=44):
+        """Logo Cockpit : (BytesIO PNG redimensionne, w, h) ou None si absent (lit data/icone, override ZIMA_ICONE_DIR)."""
+        try:
+            from pathlib import Path
+            from io import BytesIO
+            from PIL import Image
+            base = Path(os.environ.get("ZIMA_ICONE_DIR", "/app_data/icone"))
+            f = base / "Icone zimacompare.png"
+            if not f.is_file():
+                return None
+            try:
+                _resample = Image.Resampling.LANCZOS
+            except AttributeError:
+                _resample = Image.LANCZOS
+            im = Image.open(f)
+            im.load()
+            if im.mode not in ("RGB", "RGBA"):
+                im = im.convert("RGBA")
+            w, h = im.size
+            if h > height:
+                nw = max(1, int(round(w * height / float(h))))
+                im = im.resize((nw, height), _resample)
+                w, h = nw, height
+            bio = BytesIO()
+            im.save(bio, format="PNG", optimize=True)
+            bio.seek(0)
+            return bio, w, h
+        except Exception:
+            return None
+
     def _create_cockpit(self):
         """Crée le Cockpit (Dashboard principal) avec KPI, charts et nav.
 
@@ -1105,7 +1135,7 @@ officiel, sous réserve d'évolution de l'outil.
         ws.hide_gridlines(2)
 
         # Colonnes
-        ws.set_column('A:A', 3)
+        ws.set_column('A:A', 7)  # V10-3 : marge gauche elargie pour le logo
         ws.set_column('B:G', 18)
         ws.set_column('H:H', 3)
         ws.set_column('I:N', 18)
@@ -1115,6 +1145,15 @@ officiel, sous réserve d'évolution de l'outil.
         # === HEADER ===
         ws.merge_range('B1:G1', '🎯 ZimaTAG Audit Report', self.formats['title_main'])
         ws.set_row(0, 36)
+        # V10-3 : logo en-tete Cockpit (incruste depuis data/icone, skip si absent)
+        _logo = self._cockpit_logo_imgdata()
+        if _logo is not None:
+            _bio, _lw, _lh = _logo
+            ws.insert_image('A1', 'zimalogo.png', {
+                'image_data': _bio,
+                'x_offset': 3, 'y_offset': 3,
+                'object_position': 1,
+            })
         # Ligne 2 : date de génération + version du module (auto-vérification
         # du déploiement — si la version ci-dessous ne correspond pas à ce que
         # tu attends, c'est que l'ancienne version de excel_export.py est
