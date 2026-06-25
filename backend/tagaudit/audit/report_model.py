@@ -38,7 +38,7 @@ def compute_health_score(audit_results, df_main, sheet_groups, health_weights):
 
 
 def compute_top_issues(audit_results, sheet_groups, limit=5):
-    excluded_groups = {'cockpit', 'donnees', 'kpi'}
+    excluded_groups = {'cockpit', 'donnees', 'kpi', 'informations'}  # T10 Lot C
     issues = []
     for group_name, sheets in sheet_groups.items():
         if group_name in excluded_groups:

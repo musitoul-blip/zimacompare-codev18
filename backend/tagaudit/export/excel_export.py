@@ -103,7 +103,6 @@ class ExcelExporter:
         ],
         'qualite': [
             ('🎧 Qualité Audio', 'quality_analysis'),
-            ('⚡ Anomalies Bitrate', 'bitrate_anomalies'),
             ('🔀 Bitrate mixte/album', 'bitrate_mixed_album'),
             ('🔊 Incohér. Samplerate', 'samplerate_inconsistency'),
             ('🆔 Version ID3 mixte', 'id3_version_inconsistency'),
@@ -124,9 +123,7 @@ class ExcelExporter:
             ('⚠️ Années Invalides', 'invalid_year_format'),
             ('👥 Cohér. Album Artist', 'albumartist_consistency'),
             ('💿 Cohér. Nom Album', 'album_name_consistency'),
-            ('📅 Incohér. Année', 'year_inconsistency'),
             ('🎭 Incohér. Genre', 'genre_inconsistency'),
-            ('👤 Artist ≠ AlbumArtist', 'albumartist_vs_artist'),
             ('✏️ Typo AlbumArtist', 'albumartist_typo'),
             ('📂 Dossier ≠ AlbumArtist', 'folder_artist_mismatch'),
         ],
@@ -141,18 +138,24 @@ class ExcelExporter:
             ('📋 Casse AlbumArtist-Album', 'case_by_artist_album'),
         ],
         'images': [
-            ('🖼️ Taille Pochettes', 'cover_size'),
             ('🎨 Covers Non-Uniformes', 'cover_non_uniform'),
             ('🚫 Pochettes non-JPG', 'covers_non_jpg'),
-            ('📺 Pochettes > Bluesound', 'covers_bluesound_oversized'),
             ('❌ Pochettes corrompues', 'covers_invalid'),
             ('🔍 Pochettes trop petites', 'covers_too_small'),
             ('🖼️ Images multiples', 'multiple_covers'),
         ],
         'donnees': [
             ('📁 Données Complètes', 'music_tags'),
-            ('📈 Stats Genres', 'genre_stats'),
             ('🪟 Chemins Windows', 'windows_path_issues'),
+        ],
+        # T10 Lot C: onglet Informations (signal informatif volumineux, hors defauts)
+        'informations': [
+            ('👤 Artist ≠ AlbumArtist', 'albumartist_vs_artist'),
+            ('⚡ Anomalies Bitrate', 'bitrate_anomalies'),
+            ('🖼️ Taille Pochettes', 'cover_size'),
+            ('📺 Pochettes > Bluesound', 'covers_bluesound_oversized'),
+            ('📈 Stats Genres', 'genre_stats'),
+            ('📅 Incohér. Année', 'year_inconsistency'),
         ],
     }
 

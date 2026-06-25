@@ -40,6 +40,7 @@ PARDOSSIER_KEEP = {"bitrate_mixed_album", "id3_version_inconsistency", "albumart
 GROUP_LABELS = {
     "qualite": "Qualite", "integrite": "Integrite", "metadonnees": "Metadonnees",
     "doublons": "Doublons", "casse": "Casse", "images": "Pochettes", "donnees": "Donnees",
+    "informations": "Informations",  # T10 Lot C
 }
 
 
