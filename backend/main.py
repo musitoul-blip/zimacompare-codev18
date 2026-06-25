@@ -61,6 +61,12 @@ def _startup():
     ensure_dirs()
     load_persisted_state()
     hash_cache_load()
+    try:
+        from tagaudit.core import audit_registry as _ar
+        _seeded = _ar.init_and_seed()
+        logger.info(f"audit_registry: {'seed initial' if _seeded else 'deja en place'}")
+    except Exception as _e:
+        logger.error(f"audit_registry init: {_e}")
     logger.info(f"ZimaCompare v{APP_VERSION} démarré — cache hash : {hash_cache_stats()['entries']} entrées")
 
 

@@ -54,6 +54,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Optional, List, Tuple, Any
 from core import logger, config
+from core import audit_registry  # T10 Lot F2
 
 
 class ExcelExporter:
@@ -91,7 +92,7 @@ class ExcelExporter:
     BLUESOUND_MAX_SIZE_KB = 700    # kilo-octets (F20 : recalibrage poids seul, plancher reel 741 Ko)
 
     # Groupes d'onglets thématiques
-    SHEET_GROUPS = {
+    _SHEET_GROUPS_FALLBACK = {  # T10 Lot F2 (base = source primaire)
         'cockpit': [
             ('🎯 Cockpit', 'cockpit'),
         ],
@@ -161,7 +162,7 @@ class ExcelExporter:
 
     # Pondérations utilisées pour calculer le Health Score (clé = data_key)
     # Plus le poids est élevé, plus l'impact négatif sur le score est fort.
-    HEALTH_WEIGHTS = {
+    _HEALTH_WEIGHTS_FALLBACK = {  # T10 Lot F2 (base = source primaire)
         'duplicates_md5': 3.0,
         'duplicates_artist_title': 0.0,
         'missing_metadata': 2.5,
@@ -199,6 +200,34 @@ class ExcelExporter:
         self._chart_data_ws = None
         # Stocke les plages à utiliser pour les charts, nom -> (col_cat, col_val, start_row, end_row)
         self._chart_ranges: Dict[str, Tuple[str, str, int, int]] = {}
+        self._sheet_groups_cache = None  # T10 Lot F2
+        self._health_weights_cache = None  # T10 Lot F2
+
+    # ------------------------------------------------------------------
+    # T10 Lot F2 : SHEET_GROUPS / HEALTH_WEIGHTS lus depuis audit_registry
+    # (source primaire). Fallback sur les constantes _*_FALLBACK si la base
+    # est indisponible. Cache par instance (1 lecture par generation).
+    @property
+    def SHEET_GROUPS(self):
+        if self._sheet_groups_cache is None:
+            try:
+                audit_registry.init_and_seed()
+                sg = audit_registry.get_sheet_groups()
+                self._sheet_groups_cache = sg if sg else self._SHEET_GROUPS_FALLBACK
+            except Exception:
+                self._sheet_groups_cache = self._SHEET_GROUPS_FALLBACK
+        return self._sheet_groups_cache
+
+    @property
+    def HEALTH_WEIGHTS(self):
+        if self._health_weights_cache is None:
+            try:
+                audit_registry.init_and_seed()
+                hw = audit_registry.get_health_weights()
+                self._health_weights_cache = hw if hw else self._HEALTH_WEIGHTS_FALLBACK
+            except Exception:
+                self._health_weights_cache = self._HEALTH_WEIGHTS_FALLBACK
+        return self._health_weights_cache
 
     # ==================================================================
     # API publique

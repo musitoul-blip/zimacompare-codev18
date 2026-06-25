@@ -20,6 +20,7 @@ from urllib.parse import quote
 import pandas as pd
 from datetime import datetime
 from core import config
+from core import audit_registry  # T10 Lot F2
 
 ROW_CAP = 800
 SKIP_KEYS = {"music_tags"}
@@ -335,10 +336,22 @@ def export_to_html():
     from export.excel_export import ExcelExporter
     from audit import report_model
     exp = _prepare()
+    # T10 Lot F2 : classements lus depuis la base (edition UI live)
+    global INFO_KEYS, KPI_KEYS, SKIP_KEYS
+    try:
+        audit_registry.init_and_seed()
+        _ik = audit_registry.get_info_keys()
+        _kk = audit_registry.get_kpi_keys()
+        _sk = audit_registry.get_skip_keys()
+        if _ik: INFO_KEYS = _ik
+        if _kk: KPI_KEYS = _kk
+        if _sk: SKIP_KEYS = _sk
+    except Exception:
+        pass
     ar = exp.audit_results
     df = exp.df_main
-    groups = ExcelExporter.SHEET_GROUPS
-    weights = ExcelExporter.HEALTH_WEIGHTS
+    groups = exp.SHEET_GROUPS
+    weights = exp.HEALTH_WEIGHTS
     score, _pen = report_model.compute_health_score(ar, df, groups, weights)
     top = report_model.compute_top_issues(ar, groups)
     total = len(df)
