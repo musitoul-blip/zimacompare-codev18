@@ -903,12 +903,13 @@ class AuditEngine:
     def _audit_samplerate_inconsistency(self) -> pd.DataFrame:
         """Incohérences samplerate"""
         # [26] Garde colonnes
-        if not self._has_cols('album', 'samplerate', 'parent_folder'):
+        if not self._has_cols('album', 'samplerate', 'parent_folder', 'disc'):
             return pd.DataFrame()
         
         df = self.df[self.df['album'] != ''].copy()
+        df['disc_num'] = pd.to_numeric(df['disc'], errors='coerce').fillna(1).astype(int)  # T10 Lot E2
         issues = []
-        for (folder, album), group in df.groupby(['parent_folder', 'album']):
+        for (folder, album, _disc), group in df.groupby(['parent_folder', 'album', 'disc_num']):
             rates = group['samplerate'].unique()
             if len(rates) > 1:
                 issues.append({
@@ -926,17 +927,18 @@ class AuditEngine:
         l'etendue de bitrate depasse config.BITRATE_MIXED_RANGE_KBPS. Le
         melange de formats est couvert par _audit_codec_homogeneity.
         """
-        if not self._has_cols('album', 'bitrate', 'parent_folder', 'extension'):
+        if not self._has_cols('album', 'bitrate', 'parent_folder', 'extension', 'disc'):
             return pd.DataFrame()
 
         df = self.df[(self.df['album'] != '') & (self.df['extension'] == 'mp3')].copy()
         if df.empty:
             return pd.DataFrame()
         df['bitrate_num'] = pd.to_numeric(df['bitrate'], errors='coerce')
+        df['disc_num'] = pd.to_numeric(df['disc'], errors='coerce').fillna(1).astype(int)  # T10 Lot E2
 
         seuil = getattr(config, 'BITRATE_MIXED_GAP_KBPS', 50)
         issues = []
-        for (folder, album), group in df.groupby(['parent_folder', 'album']):
+        for (folder, album, _disc), group in df.groupby(['parent_folder', 'album', 'disc_num']):
             br = group['bitrate_num'].dropna()
             if len(br) < 2:
                 continue
@@ -1230,12 +1232,13 @@ class AuditEngine:
     def _audit_codec_homogeneity(self) -> pd.DataFrame:
         """Homogénéité codec"""
         # [26] Garde colonnes
-        if not self._has_cols('album', 'codec', 'parent_folder'):
+        if not self._has_cols('album', 'codec', 'parent_folder', 'disc'):
             return pd.DataFrame()
         
         df = self.df[self.df['album'] != ''].copy()
+        df['disc_num'] = pd.to_numeric(df['disc'], errors='coerce').fillna(1).astype(int)  # T10 Lot E2
         issues = []
-        for (folder, album), group in df.groupby(['parent_folder', 'album']):
+        for (folder, album, _disc), group in df.groupby(['parent_folder', 'album', 'disc_num']):
             codecs = group['codec'].unique()
             if len(codecs) > 1:
                 issues.append({
