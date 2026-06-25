@@ -302,28 +302,36 @@ class AuditEngine:
         df = self.df
         quality = []
         
-        # MP3 basse qualité — [16] utilise pd.to_numeric ici aussi pour
-        # ne pas planter sur des bitrates non numériques.
-        if 'extension' in df.columns and 'bitrate' in df.columns:
-            mp3_mask = df['extension'] == 'mp3'
-            br_numeric = pd.to_numeric(df['bitrate'], errors='coerce')
-            bitrate_mask = br_numeric < config.MIN_BITRATE_MP3
-            mp3_low_count = int((mp3_mask & bitrate_mask.fillna(False)).sum())
-            quality.append({'Catégorie': f'MP3 < {config.MIN_BITRATE_MP3} kbps', 'Nombre': mp3_low_count})
-        
-        # Sans titre / artiste / album / année / genre
+        # T10 Lot E1 (spec §2.6) : retrait MP3<seuil ; ajout Sans album-artiste,
+        # Sans n de piste, Albums noms distincts, Albums dossiers.
+        # Lignes "Sans X" (champ vide), dans l'ordre figé du §2.6.
         for col, label in (
             ('title', 'Sans titre'),
             ('artist', 'Sans artiste'),
             ('album', 'Sans album'),
+            ('albumartist', 'Sans album-artiste'),
             ('year', 'Sans année'),
             ('genre', 'Sans genre'),
+            ('track', 'Sans n° de piste'),
         ):
             if col in df.columns:
                 quality.append({
                     'Catégorie': label,
                     'Nombre': int((df[col].astype(str) == '').sum()),
                 })
+        
+        # Albums (noms distincts) : nombre de noms d'album uniques.
+        if 'album' in df.columns:
+            quality.append({
+                'Catégorie': 'Albums (noms distincts)',
+                'Nombre': int(df['album'].nunique()),
+            })
+        # Albums (dossiers) : couples (parent_folder, album) distincts = albums physiques.
+        if 'parent_folder' in df.columns and 'album' in df.columns:
+            quality.append({
+                'Catégorie': 'Albums (dossiers)',
+                'Nombre': int(df.groupby(['parent_folder', 'album']).ngroups),
+            })
         
         return pd.DataFrame(quality)
     
