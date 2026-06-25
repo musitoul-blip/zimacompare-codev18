@@ -256,6 +256,45 @@ def api_set_config(body: ConfigUpdate):
     _cfg.save()
     return _cfg.__dict__
 
+# ---------------------------------------------------------------------
+# T10 Lot F3 : registre des audits (audit_registry) - lecture + edition
+# ---------------------------------------------------------------------
+class AuditRegistryUpdate(BaseModel):
+    libelle: Optional[str] = None
+    onglet_cible: Optional[str] = None
+    classement_cible: Optional[str] = None
+    dans_health: Optional[int] = None
+    poids_cible: Optional[float] = None
+    actif: Optional[int] = None
+    ordre: Optional[int] = None
+    decision: Optional[str] = None
+    note: Optional[str] = None
+
+@app.get("/api/audit-registry")
+def api_audit_registry():
+    from tagaudit.core import audit_registry as _ar
+    _ar.init_and_seed()
+    return _ar.get_all()
+
+@app.get("/api/audit-registry/export")
+def api_audit_registry_export():
+    from tagaudit.core import audit_registry as _ar
+    from fastapi.responses import Response
+    _ar.init_and_seed()
+    return Response(content=_ar.export_json(), media_type="application/json")
+
+@app.post("/api/audit-registry/{audit_key}")
+def api_audit_registry_update(audit_key: str, body: AuditRegistryUpdate):
+    from tagaudit.core import audit_registry as _ar
+    _ar.init_and_seed()
+    fields = body.dict(exclude_none=True)
+    if not fields:
+        raise HTTPException(status_code=400, detail="aucun champ a mettre a jour")
+    ok = _ar.update_row(audit_key, fields)
+    if not ok:
+        raise HTTPException(status_code=404, detail="audit_key inconnu ou champs invalides")
+    return {"status": "ok", "audit_key": audit_key, "updated": fields}
+
 @app.get("/api/reports")
 def api_reports():
     if not REPORTS_DIR.exists(): return []

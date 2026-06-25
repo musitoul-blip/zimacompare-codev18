@@ -210,8 +210,8 @@ def update_row(audit_key, fields, db_path=None):
     vals = list(sets.values()) + [audit_key]
     conn = connect(db_path)
     try:
-        conn.execute("UPDATE audit_registry SET %s WHERE audit_key = ?" % cols, vals)
+        cur = conn.execute("UPDATE audit_registry SET %s WHERE audit_key = ?" % cols, vals)
         conn.commit()
-        return True
+        return cur.rowcount > 0  # rowcount check F3 : 0 si audit_key inconnu -> False
     finally:
         conn.close()
