@@ -110,7 +110,7 @@ export default function App() {
       </nav>
       </div>
 
-      <main style={{ flex:1, padding:24, maxWidth:1100, width:'100%', margin:'0 auto' }}>
+      <main style={{ flex:1, padding:24, maxWidth: tab === 'auditreg' ? 1500 : 1100, width:'100%', margin:'0 auto' }}>  {/* T10 Lot H4 : registre plus large */}
         {tab === 'scan'    && <TabScanSync status={status} />}
         {tab === 'zimatag' && <TabZimatag status={status} />}
         {tab === 'auditreg' && <TabAuditRegistry />}
