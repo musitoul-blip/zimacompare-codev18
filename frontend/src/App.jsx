@@ -10,6 +10,7 @@ import TabInfo     from './components/TabInfo.jsx'
 import TabZimatag from './components/TabZimatag.jsx'
 import TabVerification from './components/TabVerification.jsx'
 import TabAuditRegistry from './components/TabAuditRegistry.jsx'  // T10 Lot F4
+import TabLogs from './components/TabLogs.jsx'  // A2
 
 document.title = 'ZimaCompare&Tag v' + __APP_VERSION__
 const STATE_COLOR = {
@@ -97,6 +98,7 @@ export default function App() {
           { id:'history', label:'📋 Historique'  },
           { id:'system',  label:'⚙ Système'     },
           { id:'info',    label:'📊 Information' },
+          { id:'logs',    label:'📜 Logs' },
           { id:'verif',   label:'✅ Verification' },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
@@ -119,6 +121,7 @@ export default function App() {
         {tab === 'history' && <TabHistory />}
         {tab === 'system'  && <TabSystem />}
         {tab === 'info'    && <TabInfo />}
+        {tab === 'logs'    && <TabLogs />}
         {tab === 'verif'   && <TabVerification />}
       </main>
     </div>
