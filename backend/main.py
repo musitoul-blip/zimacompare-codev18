@@ -2,6 +2,8 @@
 import asyncio
 import importlib.metadata
 import json
+import re
+import hashlib
 import os
 import platform
 import sys
@@ -1330,6 +1332,11 @@ def api_client_log(ev: ClientLogEvent):
         if stack:
             for sline in stack.splitlines()[:20]:
                 logger.warning("[FRONT]   %s" % _cl_trunc(sline, 500))
+        _diag_append_event({
+            "ts": ev.ts or datetime.now().isoformat(),
+            "level": lvl, "message": msg, "source": src, "line": (ev.line if isinstance(ev.line, int) else None),
+            "stack": stack, "tab": tab, "action": action, "url": _cl_trunc(ev.url, 500), "user_agent": ua,
+        })
         return {"status": "ok"}
     except Exception as _e:
         try:
@@ -1337,3 +1344,122 @@ def api_client_log(ev: ClientLogEvent):
         except Exception:
             pass
         return {"status": "ok"}
+
+
+# ===== A1.2bis + A1.3 : diagnostic front (persistance JSONL + traitement) =====
+from config import APP_DATA_ROOT as _DIAG_ROOT
+DIAG_DIR = _DIAG_ROOT / "diag"
+CLIENT_EVENTS = DIAG_DIR / "client_events.jsonl"
+_DIAG_MAX_BYTES = 5 * 1024 * 1024
+_DIAG_NOISE = set()  # signatures de bruit connu (extensible) ; ex. 404 /api/clean/plan
+
+def _diag_append_event(payload: dict):
+    """Append 1 ligne JSON dans client_events.jsonl (rotation simple). Jamais bloquant."""
+    try:
+        DIAG_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            if CLIENT_EVENTS.exists() and CLIENT_EVENTS.stat().st_size > _DIAG_MAX_BYTES:
+                os.replace(str(CLIENT_EVENTS), str(CLIENT_EVENTS) + ".1")
+        except Exception:
+            pass
+        line = json.dumps(payload, ensure_ascii=False)
+        with open(CLIENT_EVENTS, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception as _e:
+        try:
+            logger.error("[FRONT] diag append: %s" % _e)
+        except Exception:
+            pass
+
+_DIAG_HEX = re.compile(r"0x[0-9a-fA-F]+")
+_DIAG_UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+_DIAG_NUM = re.compile(r"\d+")
+_DIAG_PATH = re.compile(r"[\w./-]*/[\w./-]+")
+
+def _diag_norm(msg: str) -> str:
+    s = (msg or "").strip().lower()
+    s = _DIAG_UUID.sub("#", s)
+    s = _DIAG_HEX.sub("#", s)
+    s = _DIAG_PATH.sub("/.../", s)
+    s = _DIAG_NUM.sub("#", s)
+    return s[:300]
+
+def _diag_signature(msg: str, source: str, line) -> str:
+    base = "%s|%s|%s" % (_diag_norm(msg), (source or "").strip().lower(), line if line is not None else "?")
+    return hashlib.sha1(base.encode("utf-8", "replace")).hexdigest()[:12]
+
+def _diag_load_events(since: str = ""):
+    """Lit le JSONL, renvoie la liste des events (dict). 'since' = filtre ISO sur ts (>=)."""
+    out = []
+    if not CLIENT_EVENTS.exists():
+        return out
+    try:
+        with open(CLIENT_EVENTS, "r", encoding="utf-8") as f:
+            for ln in f:
+                ln = ln.strip()
+                if not ln:
+                    continue
+                try:
+                    ev = json.loads(ln)
+                except Exception:
+                    continue
+                if since and str(ev.get("ts", "")) < since:
+                    continue
+                out.append(ev)
+    except Exception as _e:
+        logger.error("[FRONT] diag load: %s" % _e)
+    return out
+
+def _diag_aggregate(events, include_noise: bool = False):
+    """Regroupe par signature -> {count, first_seen, last_seen, tabs, level, sample_stack, message, source, line}."""
+    agg = {}
+    for ev in events:
+        sig = _diag_signature(ev.get("message", ""), ev.get("source", ""), ev.get("line"))
+        if (not include_noise) and sig in _DIAG_NOISE:
+            continue
+        ts = str(ev.get("ts", ""))
+        a = agg.get(sig)
+        if a is None:
+            a = {
+                "signature": sig,
+                "count": 0,
+                "first_seen": ts,
+                "last_seen": ts,
+                "level": ev.get("level", "error"),
+                "message": (ev.get("message") or "")[:300],
+                "source": ev.get("source", ""),
+                "line": ev.get("line"),
+                "tabs": set(),
+                "sample_stack": ev.get("stack", "") or "",
+            }
+            agg[sig] = a
+        a["count"] += 1
+        if ts and ts < a["first_seen"]:
+            a["first_seen"] = ts
+        if ts and ts > a["last_seen"]:
+            a["last_seen"] = ts
+        t = ev.get("tab")
+        if t:
+            a["tabs"].add(t)
+        if (not a["sample_stack"]) and ev.get("stack"):
+            a["sample_stack"] = ev.get("stack")
+    rows = []
+    for a in agg.values():
+        a["tabs"] = sorted(a["tabs"])
+        rows.append(a)
+    rows.sort(key=lambda r: r["count"], reverse=True)
+    return rows
+
+@app.get("/api/diag/events")
+def api_diag_events(since: str = "", include_noise: int = 0):
+    evs = _diag_load_events(since)
+    agg = _diag_aggregate(evs, include_noise=bool(include_noise))
+    n_err = sum(1 for r in agg if str(r.get("level")).lower() in ("error",))
+    n_warn = sum(1 for r in agg if str(r.get("level")).lower() in ("warning", "warn"))
+    return {
+        "total_events": len(evs),
+        "distinct_signatures": len(agg),
+        "errors": n_err,
+        "warnings": n_warn,
+        "signatures": agg,
+    }
