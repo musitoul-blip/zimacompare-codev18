@@ -730,13 +730,14 @@ def _build_files_from_list(expect_source: str) -> tuple:
     return list_path_rclone, len(rels)
 
 
-def _build_deletes_from_list(expect_source: str) -> list:
-    """Liste des chemins relatifs en statut 'deleted' du dernier scan.
-    Meme garde-fou de concordance source que _build_files_from_list.
-    Retourne [] si aucun (la passe de suppression ne fera alors rien)."""
+def _build_deletes_from_list(expect_source: str) -> tuple:
+    """Chemins relatifs en statut 'deleted' du dernier scan, separes en
+    (files, dirs). Meme garde-fou de concordance source que _build_files_from_list.
+    Les dossiers sont tries du PLUS PROFOND au moins profond (rmdir bottom-up).
+    Retourne ([], []) si aucun."""
     from config import SCAN_CSV, get_state
     if not SCAN_CSV.exists():
-        return []
+        return [], []
     st = get_state()
     scan_source = st.get("source", "")
     if scan_source and expect_source and scan_source != expect_source:
@@ -744,20 +745,42 @@ def _build_deletes_from_list(expect_source: str) -> list:
             f"Le dernier scan porte sur une autre source ({scan_source}) "
             f"que celle demandee ({expect_source})."
         )
-    rels = []
+    files = []
+    dirs = []
     try:
         with open(SCAN_CSV, newline="", encoding="utf-8") as f:
             reader = _csv.DictReader(f, delimiter=";")
             for row in reader:
-                if str(row.get("is_dir", "")).strip().lower() in ("true", "1"):
+                if (row.get("status") or "").strip() != "deleted":
                     continue
-                if (row.get("status") or "").strip() == "deleted":
-                    rel = (row.get("relative_path") or "").strip()
-                    if rel:
-                        rels.append(rel.replace("\\", "/"))
+                rel = (row.get("relative_path") or "").strip()
+                if not rel:
+                    continue
+                rel = rel.replace("\\", "/")
+                if str(row.get("is_dir", "")).strip().lower() in ("true", "1"):
+                    dirs.append(rel)
+                else:
+                    files.append(rel)
     except Exception as e:
         raise RcloneError(f"Lecture du scan impossible : {e}")
-    return rels
+    # rmdir bottom-up : le plus de '/' (plus profond) en premier.
+    dirs.sort(key=lambda p: p.count("/"), reverse=True)
+    return files, dirs
+
+
+def _rc_rmdir(fs: str, remote: str, dry_run: bool) -> bool:
+    """Supprime UN dossier (vide) du remote via operations/rmdir.
+    dry_run -> log seulement. Retourne True si supprime (ou simule)."""
+    if dry_run:
+        logger.info(f"[RCLONE][DELETE] (DRY-RUN) rmdir {fs}{remote}")
+        return True
+    try:
+        _rc_call("operations/rmdir", {"fs": fs, "remote": remote})
+        logger.info(f"[RCLONE][DELETE] rmdir {fs}{remote}")
+        return True
+    except RcloneError as e:
+        logger.error(f"[RCLONE][DELETE] echec rmdir {fs}{remote} : {e}")
+        return False
 
 
 def _split_dest_fs(dest: str) -> tuple:
@@ -784,41 +807,54 @@ def _rc_deletefile(fs: str, remote: str, dry_run: bool) -> bool:
         return False
 
 
-def _orchestrate_deletes_after_copy(dest: str, rels: list, dry_run: bool):
-    """Thread : attend la fin de la copie ; si DONE, supprime cote pCloud les
-    fichiers 'deleted' du scan (liste bornee). Si ERROR/ABORTED -> ne supprime
-    rien (securite : pas de suppression si la copie n'a pas abouti)."""
-    # Attente de fin de copie (rclone_state quitte RUNNING).
-    while True:
-        time.sleep(_POLL_INTERVAL_S)
-        with _state_lock:
-            stt = _state.rclone_state
-        if stt != "RUNNING":
-            break
-        if _stop_event.is_set():
-            logger.warning("[RCLONE][DELETE] arret demande avant la passe de suppression.")
+def _orchestrate_deletes_after_copy(dest: str, files: list, dirs: list,
+                                   dry_run: bool, copy_launched: bool = True):
+    """Thread : (si copy_launched) attend la fin de la copie ; si DONE (ou si
+    aucune copie n'a ete lancee), supprime cote pCloud les FICHIERS 'deleted'
+    puis les DOSSIERS devenus vides (rmdir bottom-up). Si la copie finit en
+    ERROR/ABORTED -> ne supprime rien (securite)."""
+    if copy_launched:
+        while True:
+            time.sleep(_POLL_INTERVAL_S)
+            with _state_lock:
+                stt = _state.rclone_state
+            if stt != "RUNNING":
+                break
+            if _stop_event.is_set():
+                logger.warning("[RCLONE][DELETE] arret demande avant la passe de suppression.")
+                return
+        if stt != "DONE":
+            logger.warning(f"[RCLONE][DELETE] copie terminee en '{stt}' (non DONE) "
+                           f"-> suppressions ignorees ({len(files)} fichier(s), "
+                           f"{len(dirs)} dossier(s) non traite(s)).")
             return
-    if stt != "DONE":
-        logger.warning(f"[RCLONE][DELETE] copie terminee en '{stt}' (non DONE) "
-                       f"-> suppressions ignorees ({len(rels)} fichier(s) non traite(s)).")
-        return
     fs, base = _split_dest_fs(dest)
     prefix = (base + "/") if base else ""
-    done = 0
-    errors = 0
+    f_done = f_err = 0
+    d_done = d_err = 0
     logger.info(f"[RCLONE][DELETE] Debut passe de suppression "
-                f"{'(DRY-RUN) ' if dry_run else ''}: {len(rels)} fichier(s) cible(s).")
-    for rel in rels:
+                f"{'(DRY-RUN) ' if dry_run else ''}: {len(files)} fichier(s), "
+                f"{len(dirs)} dossier(s) cible(s).")
+    for rel in files:
         if _stop_event.is_set():
-            logger.warning(f"[RCLONE][DELETE] interrompu : {done}/{len(rels)} traite(s).")
+            logger.warning(f"[RCLONE][DELETE] interrompu (fichiers) : {f_done}/{len(files)}.")
             break
-        ok = _rc_deletefile(fs, prefix + rel, dry_run)
-        if ok:
-            done += 1
+        if _rc_deletefile(fs, prefix + rel, dry_run):
+            f_done += 1
         else:
-            errors += 1
-    logger.info(f"[RCLONE][DELETE] Passe terminee : {done} supprime(s), "
-                f"{errors} echec(s){' (DRY-RUN)' if dry_run else ''}.")
+            f_err += 1
+    for rel in dirs:
+        if _stop_event.is_set():
+            logger.warning(f"[RCLONE][DELETE] interrompu (dossiers) : {d_done}/{len(dirs)}.")
+            break
+        if _rc_rmdir(fs, prefix + rel, dry_run):
+            d_done += 1
+        else:
+            d_err += 1
+    logger.info(f"[RCLONE][DELETE] Passe terminee : "
+                f"{f_done} fichier(s) supprime(s) ({f_err} echec), "
+                f"{d_done} dossier(s) supprime(s) ({d_err} echec)"
+                f"{' (DRY-RUN)' if dry_run else ''}.")
 
 
 def start_rclone_fast_sync(source: str, dest: str, *,
@@ -843,8 +879,29 @@ def start_rclone_fast_sync(source: str, dest: str, *,
     if not source or not source.startswith("/"):
         raise RcloneError(f"Source invalide : {source!r}")
 
-    # Construction de la liste (+ garde-fou de concordance de source).
-    list_path, n_files = _build_files_from_list(source)
+    # Suppressions a propager (option B) : construites d'abord pour decider
+    # si l'on peut sauter la copie quand il n'y a QUE des suppressions.
+    del_files, del_dirs = ([], [])
+    if mirror_deletes:
+        try:
+            del_files, del_dirs = _build_deletes_from_list(source)
+        except RcloneError as e:
+            logger.warning(f"[RCLONE][DELETE] liste suppressions indisponible : {e}")
+            del_files, del_dirs = [], []
+    has_deletes = bool(del_files or del_dirs)
+
+    # Construction de la liste de copie. Si vide ET qu'il y a des suppressions,
+    # on NE leve PAS d'erreur : on saute la phase copie.
+    try:
+        list_path, n_files = _build_files_from_list(source)
+        has_copy = True
+    except RcloneError as e:
+        if not has_deletes:
+            raise
+        logger.info(f"[RCLONE] Pas de fichier a copier ({e}) — "
+                    f"seules des suppressions sont a propager.")
+        list_path, n_files = "", 0
+        has_copy = False
 
     # Le démon doit répondre.
     rc_ping()
@@ -864,54 +921,55 @@ def start_rclone_fast_sync(source: str, dest: str, *,
                 f"source={source} dest={dest} — {n_files} fichier(s) "
                 f"d'après le dernier scan")
 
-    result = _rc_call("sync/copy", payload)
-    job_id = result.get("jobid")
-    if not job_id:
-        raise RcloneError(f"L'API rc n'a pas renvoyé de jobid : {result}")
+    job_id = 0
+    if has_copy:
+        result = _rc_call("sync/copy", payload)
+        job_id = result.get("jobid")
+        if not job_id:
+            raise RcloneError(f"L'API rc n'a pas renvoyé de jobid : {result}")
 
-    _stop_event.clear()
-    now = datetime.now().isoformat(timespec="seconds")
-    with _state_lock:
-        _state.rclone_state = "RUNNING"
-        _state.phase        = "transferring"   # mode rapide : pas de phase checking
-        _state.job_id       = int(job_id)
-        _state.operation    = "copy"
-        _state.source       = source
-        _state.dest         = dest
-        _state.dry_run      = bool(dry_run)
-        _state.progress     = 0
-        _state.bytes_done   = 0
-        _state.bytes_total  = 0
-        _state.speed_bps    = 0.0
-        _state.eta_seconds  = 0
-        _state.transfers    = 0
-        _state.errors       = 0
-        _state.checks       = 0
-        _state.current_file = ""
-        _state.error        = ""
-        _state.started_at   = now
-        _state.finished_at  = ""
+        _stop_event.clear()
+        now = datetime.now().isoformat(timespec="seconds")
+        with _state_lock:
+            _state.rclone_state = "RUNNING"
+            _state.phase        = "transferring"   # mode rapide : pas de phase checking
+            _state.job_id       = int(job_id)
+            _state.operation    = "copy"
+            _state.source       = source
+            _state.dest         = dest
+            _state.dry_run      = bool(dry_run)
+            _state.progress     = 0
+            _state.bytes_done   = 0
+            _state.bytes_total  = 0
+            _state.speed_bps    = 0.0
+            _state.eta_seconds  = 0
+            _state.transfers    = 0
+            _state.errors       = 0
+            _state.checks       = 0
+            _state.current_file = ""
+            _state.error        = ""
+            _state.started_at   = now
+            _state.finished_at  = ""
 
-    _save_job_file()
+        _save_job_file()
 
-    t = threading.Thread(target=_monitor_job, args=(int(job_id),), daemon=True)
-    t.start()
+        t = threading.Thread(target=_monitor_job, args=(int(job_id),), daemon=True)
+        t.start()
+    else:
+        # Pas de copie : on s'assure que _stop_event est arme pour l'orchestrateur.
+        _stop_event.clear()
 
-    # Passe de suppression (option B) : uniquement si demande ET liste non vide.
-    deletes_count = 0
-    if mirror_deletes:
-        try:
-            _dels = _build_deletes_from_list(source)
-        except RcloneError as e:
-            logger.warning(f"[RCLONE][DELETE] liste suppressions indisponible : {e}")
-            _dels = []
-        deletes_count = len(_dels)
-        if _dels:
-            logger.info(f"[RCLONE][DELETE] {deletes_count} suppression(s) "
-                        f"programmee(s) apres la copie.")
-            dt = threading.Thread(target=_orchestrate_deletes_after_copy,
-                                  args=(dest, _dels, bool(dry_run)), daemon=True)
-            dt.start()
+    # Passe de suppression (option B) : fichiers puis dossiers. Si une copie a
+    # ete lancee, l'orchestrateur attend sa fin (DONE) ; sinon il demarre direct.
+    deletes_count = len(del_files) + len(del_dirs)
+    if has_deletes:
+        logger.info(f"[RCLONE][DELETE] {len(del_files)} fichier(s) + "
+                    f"{len(del_dirs)} dossier(s) programme(s) "
+                    f"{'apres la copie' if has_copy else '(sans copie)'}.")
+        dt = threading.Thread(target=_orchestrate_deletes_after_copy,
+                              args=(dest, del_files, del_dirs, bool(dry_run), has_copy),
+                              daemon=True)
+        dt.start()
 
     return {"ok": True, "job_id": int(job_id), "operation": "copy",
             "mode": "fast", "dry_run": bool(dry_run),
