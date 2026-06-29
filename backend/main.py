@@ -1284,3 +1284,56 @@ def api_tag_dirs(refresh: int = 0, source: Optional[str] = None):
 def api_tag_progress():
     from tagscan import tag_progress
     return tag_progress()
+
+
+# ===== A1.2 : capture des erreurs front (diagnostic v15) =====
+class ClientLogEvent(BaseModel):
+    level: Optional[str] = "error"
+    message: Optional[str] = ""
+    source: Optional[str] = ""
+    line: Optional[int] = None
+    col: Optional[int] = None
+    stack: Optional[str] = ""
+    url: Optional[str] = ""
+    tab: Optional[str] = ""
+    action: Optional[str] = ""
+    app_version: Optional[str] = ""
+    user_agent: Optional[str] = ""
+    ts: Optional[str] = ""
+
+def _cl_trunc(v, n):
+    try:
+        s = "" if v is None else str(v)
+    except Exception:
+        return ""
+    return s[:n]
+
+@app.post("/api/client-log")
+def api_client_log(ev: ClientLogEvent):
+    """Recoit un evenement console/erreur du front, le borne et le verse
+    dans le log unifie (logger 'zimacompare' -> log_buffer + fichier),
+    prefixe [FRONT]. Ne leve jamais d'exception vers le client."""
+    try:
+        lvl = (_cl_trunc(ev.level, 12) or "error").lower()
+        if lvl not in ("error", "warning", "warn", "info", "debug", "log"):
+            lvl = "error"
+        msg = _cl_trunc(ev.message, 2000)
+        src = _cl_trunc(ev.source, 500)
+        line = ev.line if isinstance(ev.line, int) else "?"
+        tab = _cl_trunc(ev.tab, 120)
+        action = _cl_trunc(ev.action, 200)
+        ua = _cl_trunc(ev.user_agent, 300)
+        stack = _cl_trunc(ev.stack, 4000)
+        head = "[FRONT] %s | %s | tab=%s action=%s src=%s:%s ua=%s" % (
+            lvl.upper(), msg, tab, action, src, line, ua)
+        logger.warning(head)
+        if stack:
+            for sline in stack.splitlines()[:20]:
+                logger.warning("[FRONT]   %s" % _cl_trunc(sline, 500))
+        return {"status": "ok"}
+    except Exception as _e:
+        try:
+            logger.error("[FRONT] client-log interne: %s" % _e)
+        except Exception:
+            pass
+        return {"status": "ok"}
