@@ -1,8 +1,8 @@
-name: zimacompare-v14
+name: zimacompare-v15
 services:
   zimacompare:
-    container_name: zimacompare-v14
-    image: ghcr.io/musitoul-blip/zimacompare-aio:v14
+    container_name: zimacompare-v15
+    image: ghcr.io/musitoul-blip/zimacompare-aio:v15
     restart: unless-stopped
     cpu_shares: 90
     privileged: true
@@ -10,8 +10,8 @@ services:
       - /dev/fuse
     stop_grace_period: 30s
     ports:
-      - target: 8515
-        published: "8515"
+      - target: 8516
+        published: "8516"
         protocol: tcp
     environment:
       - TZ=Europe/Paris
@@ -21,17 +21,17 @@ services:
       - RCLONE_RC_PASS=${RCLONE_RC_PASS}
       - RCLONE_RC_URL=http://127.0.0.1:5572
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8515/api/health > /dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:8516/api/health > /dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       start_period: 20s
       retries: 3
     volumes:
       - type: bind
-        source: /DATA/AppData/zimacompare-v14/data
+        source: /DATA/AppData/zimacompare-v15/data
         target: /app_data
       - type: bind
-        source: /DATA/AppData/zimacompare-v14/rclone
+        source: /DATA/AppData/zimacompare-v15/rclone
         target: /config/rclone
       - type: bind
         source: /media/HDD-Storage1
@@ -72,7 +72,7 @@ services:
           description:
             en_us: rclone remote-control password
       ports:
-        - container: "8515"
+        - container: "8516"
           description:
             en_us: ZimaCompare Web UI
       volumes:
@@ -124,9 +124,9 @@ x-casaos:
     custom: ""
     en_us: ZimaCompare&Tag v14
   index: /
-  port_map: "8515"
+  port_map: "8516"
   scheme: http
   hostname: ""
   is_uncontrolled: false
-  store_app_id: zimacompare-v14
+  store_app_id: zimacompare-v15
   icon: https://filedn.eu/lXD7ErB2q6Sp19LoIrttSsj/ZimaCompare%26Tag/icon.png
