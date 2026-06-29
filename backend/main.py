@@ -1546,6 +1546,7 @@ def _diag_build_report(since: str = "", fmt: str = "md"):
             "errors": errors,
             "warnings": warnings,
             "selfcheck": sc_summary,
+            "health": _diag_collect_health(),
         }
 
     L = []
@@ -1592,6 +1593,25 @@ def _diag_build_report(since: str = "", fmt: str = "md"):
     L.append("## Bruit filtre")
     L.append("%d evenement(s) correspondant a des signatures connues, non detaillees." % noise_count)
     L.append("")
+    try:
+        _h = _diag_collect_health()
+        L.append("## Observabilite systeme")
+        L.append("- verdict : %s" % _h.get("verdict"))
+        _m = _h.get("metrics", {})
+        L.append("- CPU : %s%% | RAM : %s%% (%s/%s Mo) | load/cpu : %s" % (
+            _m.get("cpu_percent"), _m.get("mem_percent"), _m.get("mem_used_mb"),
+            _m.get("mem_total_mb"), _m.get("load_per_cpu")))
+        for _d in _m.get("disks", []):
+            if "error" in _d:
+                L.append("- disque %s : ERREUR %s" % (_d.get("mount"), _d.get("error")))
+            else:
+                L.append("- disque %s : %s%% libre (%s/%s Go)" % (
+                    _d.get("mount"), _d.get("free_pct"), _d.get("free_gb"), _d.get("total_gb")))
+        L.append("")
+    except Exception as _eh:
+        L.append("## Observabilite systeme")
+        L.append("- indisponible : %s" % _eh)
+        L.append("")
     L.append("## Etat systeme (selfcheck)")
     L.append("- verdict : %s" % sc_summary.get("verdict"))
     for c in sc_summary.get("checks", []):
@@ -1615,3 +1635,98 @@ def api_diag_report(since: str = "", format: str = "md"):
         media_type="text/markdown; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename=diag_report_%s.md" % stamp},
     )
+
+
+# ===== A1bis : observabilite systeme (sante conteneur + impact hote par proxys) =====
+def _diag_disk(mp):
+    import shutil
+    try:
+        u = shutil.disk_usage(mp)
+        return {"mount": mp, "free_pct": round(100.0 * u.free / u.total, 1),
+                "free_gb": round(u.free / 1073741824, 1), "total_gb": round(u.total / 1073741824, 1)}
+    except Exception as e:
+        return {"mount": mp, "error": str(e)}
+
+def _diag_status(val, warn, crit, higher_is_worse=True):
+    if val is None:
+        return "unknown"
+    try:
+        if higher_is_worse:
+            if val >= crit: return "crit"
+            if val >= warn: return "warn"
+        else:
+            if val <= crit: return "crit"
+            if val <= warn: return "warn"
+    except Exception:
+        return "unknown"
+    return "ok"
+
+def _diag_collect_health():
+    import os
+    metrics = {}
+    statuses = {}
+    try:
+        from config import HEALTH_THRESHOLDS as TH
+    except Exception:
+        TH = {"cpu_warn": 85.0, "cpu_crit": 97.0, "mem_warn": 85.0, "mem_crit": 95.0,
+              "load_per_cpu_warn": 2.0, "load_per_cpu_crit": 4.0,
+              "disk_free_pct_warn": 10.0, "disk_free_pct_crit": 5.0}
+    try:
+        import psutil
+        cpu = psutil.cpu_percent(interval=0.2)
+        vm = psutil.virtual_memory()
+        proc = psutil.Process()
+        metrics["cpu_percent"] = cpu
+        metrics["mem_percent"] = vm.percent
+        metrics["mem_used_mb"] = round(vm.used / 1048576)
+        metrics["mem_total_mb"] = round(vm.total / 1048576)
+        metrics["proc_threads"] = proc.num_threads()
+        metrics["proc_rss_mb"] = round(proc.memory_info().rss / 1048576)
+        statuses["cpu"] = _diag_status(cpu, TH["cpu_warn"], TH["cpu_crit"])
+        statuses["mem"] = _diag_status(vm.percent, TH["mem_warn"], TH["mem_crit"])
+    except Exception as e:
+        metrics["psutil_error"] = str(e)
+    try:
+        ncpu = os.cpu_count() or 1
+        la = os.getloadavg()
+        metrics["loadavg"] = [round(x, 2) for x in la]
+        metrics["ncpu"] = ncpu
+        lpc = la[0] / ncpu
+        metrics["load_per_cpu"] = round(lpc, 2)
+        statuses["load"] = _diag_status(lpc, TH["load_per_cpu_warn"], TH["load_per_cpu_crit"])
+    except Exception as e:
+        metrics["load_error"] = str(e)
+    disks = [_diag_disk("/app_data"), _diag_disk("/disks/HDD-Storage1"), _diag_disk("/network/pCloud")]
+    metrics["disks"] = disks
+    disk_status = "ok"
+    for d in disks:
+        fp = d.get("free_pct")
+        if fp is None:
+            continue
+        s = _diag_status(fp, TH["disk_free_pct_warn"], TH["disk_free_pct_crit"], higher_is_worse=False)
+        order = {"ok": 0, "warn": 1, "crit": 2, "unknown": 0}
+        if order.get(s, 0) > order.get(disk_status, 0):
+            disk_status = s
+    statuses["disk"] = disk_status
+    try:
+        with _log_lock:
+            metrics["log_buffer_lines"] = len(log_buffer)
+    except Exception:
+        pass
+    try:
+        if CLIENT_EVENTS.exists():
+            metrics["diag_jsonl_kb"] = round(CLIENT_EVENTS.stat().st_size / 1024, 1)
+        else:
+            metrics["diag_jsonl_kb"] = 0
+    except Exception:
+        pass
+    order = {"ok": 0, "warn": 1, "crit": 2, "unknown": 0}
+    verdict = "ok"
+    for s in statuses.values():
+        if order.get(s, 0) > order.get(verdict, 0):
+            verdict = s
+    return {"metrics": metrics, "statuses": statuses, "verdict": verdict}
+
+@app.get("/api/diag/health")
+def api_diag_health():
+    return _diag_collect_health()

@@ -392,6 +392,14 @@ _DISK_TIMEOUT_NETWORK_S  = 3.0
 SMART_WATCH_YEARS = 3   # >= : surveillance (info, status ok)
 SMART_OLD_YEARS   = 5   # >= : warn (disque ancien)
 
+# A1bis : seuils d'observabilite systeme (warn/crit). Editables au fichier.
+HEALTH_THRESHOLDS = {
+    "cpu_warn": 85.0, "cpu_crit": 97.0,
+    "mem_warn": 85.0, "mem_crit": 95.0,
+    "load_per_cpu_warn": 2.0, "load_per_cpu_crit": 4.0,
+    "disk_free_pct_warn": 10.0, "disk_free_pct_crit": 5.0,
+}
+
 
 def _disk_usage_raw(p: str) -> dict:
     """Appel direct à shutil.disk_usage + psutil pour le mount/fstype.
