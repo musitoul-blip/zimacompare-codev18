@@ -124,6 +124,22 @@ _SEED_PARAMS = [
     ("bluesound_resize_px", 600.0, "covers_bluesound_oversized",
      "Cible de redimensionnement pochette Bluesound (Mp3tag)", "px"),
 ]
+
+# --- Lot 1 BluOS : paramètres du scanner d'artwork Bluesound (table séparée bluos_config) ---
+# NB: value stockée en TEXT (contrairement à audit_params en REAL) car bluos_ip est une chaîne.
+#     Les appelants castent en int/float pour les seuils numériques.
+# Tuples : (param_key, value, label, unit)
+_SEED_BLUOS = [
+    ("bluos_ip", "192.168.1.121", "IP du lecteur Bluesound (Node)", ""),
+    ("bluos_port", "11000", "Port API BluOS", ""),
+    ("bluos_timeout", "10", "Timeout requête BluOS", "s"),
+    ("embedded_max_kb", "600", "Pochette embarquée : taille max", "Ko"),
+    ("external_autoresize_min_kb", "600", "Pochette externe : redim. auto au-delà", "Ko"),
+    ("external_autoresize_max_kb", "4096", "Pochette externe : taille max acceptée", "Ko"),
+    ("external_no_optimize_max_px", "1200", "Pochette externe : dimension max si optim. off", "px"),
+    ("placeholder_max_kb", "50", "Placeholder : taille max (icône générique)", "Ko"),
+    ("placeholder_min_count", "4", "Placeholder : nb min d'albums pour détecter", "albums"),
+]
 _SEED_INFO = {
     "cover_size", "quality_analysis", "albumartist_vs_artist", "duplicates_artist_title",
     "bitrate_mixed_album", "id3_version_inconsistency", "albumartist_typo",
@@ -157,6 +173,12 @@ def _migrate(conn):
     for _pk, _val, _ak, _lbl, _un in _SEED_PARAMS:
         conn.execute("INSERT OR IGNORE INTO audit_params (param_key, value, audit_key, label, unit, updated_at) VALUES (?,?,?,?,?,?)",
                      (_pk, _val, _ak, _lbl, _un, _now()))
+    conn.commit()
+    # --- Lot 1 BluOS : table bluos_config (paramètres du scanner, value TEXT) ---
+    conn.execute("CREATE TABLE IF NOT EXISTS bluos_config (param_key TEXT PRIMARY KEY, value TEXT, label TEXT, unit TEXT, updated_at TEXT)")
+    for _bk, _bval, _blbl, _bun in _SEED_BLUOS:
+        conn.execute("INSERT OR IGNORE INTO bluos_config (param_key, value, label, unit, updated_at) VALUES (?,?,?,?,?)",
+                     (_bk, _bval, _blbl, _bun, _now()))
     conn.commit()
     cols = [r[1] for r in conn.execute("PRAGMA table_info(audit_registry)").fetchall()]
     if 'par_dossier' not in cols:
@@ -304,6 +326,39 @@ def set_audit_param(key, value, db_path=None):
     try:
         cur = conn.execute("UPDATE audit_params SET value = ?, updated_at = ? WHERE param_key = ?",
                            (float(value), _now(), key))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+# --- Lot 1 BluOS : accesseurs bluos_config (copie du motif audit_params, value TEXT) ---
+def get_bluos_param(key, default=None, db_path=None):
+    """Retourne la valeur (str) d'un paramètre BluOS, ou default si absent."""
+    conn = connect(db_path)
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS bluos_config (param_key TEXT PRIMARY KEY, value TEXT, label TEXT, unit TEXT, updated_at TEXT)")
+        row = conn.execute("SELECT value FROM bluos_config WHERE param_key = ?", (key,)).fetchone()
+        return row["value"] if row else default
+    finally:
+        conn.close()
+
+def get_all_bluos_params(db_path=None):
+    """Liste tous les paramètres BluOS (dicts) pour l'UI."""
+    conn = connect(db_path)
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS bluos_config (param_key TEXT PRIMARY KEY, value TEXT, label TEXT, unit TEXT, updated_at TEXT)")
+        rows = conn.execute("SELECT param_key, value, label, unit, updated_at FROM bluos_config ORDER BY param_key").fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+def set_bluos_param(key, value, db_path=None):
+    """Met a jour la valeur (str) d'un paramètre BluOS existant. False si param_key inconnu."""
+    conn = connect(db_path)
+    try:
+        cur = conn.execute("UPDATE bluos_config SET value = ?, updated_at = ? WHERE param_key = ?",
+                           (str(value), _now(), key))
         conn.commit()
         return cur.rowcount > 0
     finally:
