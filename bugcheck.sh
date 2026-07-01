@@ -5,8 +5,8 @@
 #  Verdict PASS / A VOIR. Ignore le bruit connu (RUF012/B007/F401/unicode),
 #  ne signale que les VRAIS bugs + erreurs runtime.
 # =====================================================================
-C=zimacompare-v15
-PORT=8516
+C=zimacompare-v16
+PORT=8517
 FAIL=0
 
 echo "===== 1/7  SYNTAXE (compileall) ====="
