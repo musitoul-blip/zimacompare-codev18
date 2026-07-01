@@ -43,6 +43,7 @@ from scanner import (compute_scan_stats, load_scan_results, start_scan, stop_sca
 import smartinfo
 from syncer import start_sync, stop_sync
 from tagscan import start_tag_scan, stop_tag_scan, tag_result_info, TAG_SOURCE_DEFAULT, build_tag_export, dirs_payload
+from bluos_scanner import start_bluos_scan, stop_bluos_scan, bluos_status, bluos_results
 import rclone  # pilotage rclone sync via l'API rc du conteneur rclone
 from setup import (
     router as setup_router,
@@ -1304,6 +1305,47 @@ def api_tag_dirs(refresh: int = 0, source: Optional[str] = None):
 def api_tag_progress():
     from tagscan import tag_progress
     return tag_progress()
+
+
+# ===== BluOS Artwork Scanner (Lot 3) — routes scan/status/results =====
+class BluosScanRequest(BaseModel):
+    ip: Optional[str] = None            # défaut = bluos_config.bluos_ip
+    port: Optional[int] = None          # défaut = bluos_config.bluos_port
+    timeout: Optional[int] = None       # défaut = bluos_config.bluos_timeout
+    source_path: Optional[str] = None   # volet B optionnel (diagnostic fichiers)
+
+
+@app.post("/api/bluos/scan")
+def api_bluos_scan(req: BluosScanRequest = BluosScanRequest()):
+    """Démarre un scan BluOS (non bloquant, thread). 409 si occupé."""
+    source = (req.source_path or "").strip() or None
+    if source is not None and not validate_path(source):
+        raise HTTPException(400, f"Source invalide -- prefixes : {VALID_PREFIXES}")
+    res = start_bluos_scan(ip=req.ip, port=req.port, timeout=req.timeout,
+                           source_path=source)
+    if res == "busy":
+        raise HTTPException(409, "Une operation est deja en cours")
+    return {"status": "started"}
+
+
+@app.post("/api/bluos/abort")
+def api_bluos_abort():
+    """Interrompt le scan BluOS en cours."""
+    if not stop_bluos_scan():
+        raise HTTPException(400, "Aucun scan BluOS en cours")
+    return {"status": "aborting"}
+
+
+@app.get("/api/bluos/status")
+def api_bluos_status():
+    """Progression du scan BluOS."""
+    return bluos_status()
+
+
+@app.get("/api/bluos/results")
+def api_bluos_results():
+    """Résultats du dernier scan BluOS."""
+    return bluos_results()
 
 
 # ===== A1.2 : capture des erreurs front (diagnostic v15) =====

@@ -622,3 +622,131 @@ def diagnose_library(source_path, network_results=None, log=_default_log,
         folder_results = cross_reference(network_results, folder_results)
     log(f"-> {len(folder_results)} dossier(s) avec un diagnostic à examiner.")
     return folder_results
+
+
+# ============================================================================
+# MÉCANIQUE THREAD / PROGRESSION / INTERRUPTIBILITÉ (Lot 3)
+# Calqué sur le motif tagscan.py : garde-fou busy via l'état partagé,
+# thread daemon, stop_event, publication de la progression via update_state.
+# ============================================================================
+import threading
+import time
+
+try:
+    from config import update_state, get_state, AppState
+    _HAS_STATE = True
+except Exception:  # pragma: no cover
+    _HAS_STATE = False
+
+_lock = threading.Lock()
+_stop_event = threading.Event()
+_thread = None
+# résultats du dernier scan : {"player":..., "network":[...], "folders":[...], "done":bool, "error":str}
+_results = {"player": None, "network": [], "folders": [], "done": False, "error": ""}
+_meta = {"started_at": 0.0, "ended_at": 0.0, "phase": ""}
+
+
+def _bluos_progress(idx, total):
+    """Callback de progression : publie dans l'état partagé (best effort)."""
+    if not _HAS_STATE:
+        return
+    if total:
+        pct = int(idx * 100 / total) if total else 0
+        update_state(progress=pct, processed=idx, total=total,
+                     current_file=f"BluOS {idx}/{total}")
+    else:
+        update_state(processed=idx, current_file=f"BluOS dossier {idx}")
+
+
+def _run_bluos(ip, port, timeout, source_path):
+    global _results
+    _results = {"player": None, "network": [], "folders": [], "done": False, "error": ""}
+    _meta["started_at"] = time.time()
+    _meta["ended_at"] = 0.0
+    try:
+        _meta["phase"] = "network"
+        net = scan_network(ip=ip, port=port, timeout=timeout,
+                           stop_event=_stop_event, progress_cb=_bluos_progress)
+        _results["player"] = net["player"]
+        _results["network"] = net["results"]
+
+        if source_path and not _stop_event.is_set():
+            _meta["phase"] = "library"
+            folders = diagnose_library(source_path, network_results=net["results"],
+                                       stop_event=_stop_event, progress_cb=_bluos_progress)
+            _results["folders"] = folders
+
+        _results["done"] = True
+        if _HAS_STATE:
+            update_state(app_state=AppState.IDLE, progress=100,
+                         current_file="BluOS terminé", error="")
+    except Exception as e:
+        _results["error"] = str(e)
+        _results["done"] = True
+        if _HAS_STATE:
+            update_state(app_state=AppState.ERROR, error="bluos: %s" % e)
+    finally:
+        _meta["ended_at"] = time.time()
+        _meta["phase"] = ""
+
+
+def start_bluos_scan(ip=None, port=None, timeout=None, source_path=None):
+    """Démarre un scan BluOS en thread. Retourne True ou 'busy'.
+
+    Garde-fou croisé : refuse si une autre opération (scan/sync/clean) tourne
+    (cf. §6). Utilise l'état partagé AppState.
+    """
+    global _thread
+    if _HAS_STATE:
+        state = get_state()
+        if state["app_state"] not in (AppState.IDLE, AppState.ERROR):
+            return "busy"
+    with _lock:
+        if _thread is not None and _thread.is_alive():
+            return "busy"
+        _stop_event.clear()
+        if _HAS_STATE:
+            update_state(app_state=AppState.SCANNING, method="bluos", source="",
+                         target="", error="", scan_done=False, progress=0,
+                         processed=0, total=0, current_file="BluOS : connexion...")
+        _thread = threading.Thread(
+            target=_run_bluos, args=(ip, port, timeout, source_path), daemon=True)
+        _thread.start()
+    return True
+
+
+def stop_bluos_scan():
+    """Demande l'interruption du scan BluOS en cours. True si un scan tournait."""
+    with _lock:
+        alive = _thread is not None and _thread.is_alive()
+    if alive:
+        _stop_event.set()
+        return True
+    return False
+
+
+def bluos_status():
+    """État courant du scan BluOS (pour /api/bluos/status)."""
+    with _lock:
+        running = _thread is not None and _thread.is_alive()
+    st = {}
+    if _HAS_STATE:
+        s = get_state()
+        st = {"progress": s.get("progress", 0), "processed": s.get("processed", 0),
+              "total": s.get("total", 0), "current_file": s.get("current_file", "")}
+    st.update({"running": running, "phase": _meta.get("phase", ""),
+               "done": _results.get("done", False), "error": _results.get("error", "")})
+    return st
+
+
+def bluos_results():
+    """Résultats du dernier scan BluOS (pour /api/bluos/results)."""
+    flagged = [r for r in _results.get("network", []) if r.get("status") != "ok"]
+    return {
+        "player": _results.get("player"),
+        "flagged_count": len(flagged),
+        "network": _results.get("network", []),
+        "folders": _results.get("folders", []),
+        "done": _results.get("done", False),
+        "error": _results.get("error", ""),
+    }
