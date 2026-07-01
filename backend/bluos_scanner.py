@@ -607,15 +607,191 @@ def scan_network(ip=None, port=None, timeout=None, log=_default_log,
     return {"player": player_info, "results": results, "flagged": len(flagged)}
 
 
-def diagnose_library(source_path, network_results=None, log=_default_log,
-                     stop_event=None, progress_cb=None):
-    """Volet B : diagnostique un dossier local. Renvoie la liste des dossiers
-    avec un problème (issues/notes). Croise avec network_results si fourni.
+def _master_csv_default():
+    """Chemin canonique du master_scan.csv (moteur tag), avec fallback."""
+    p = "/app_data/tagaudit/data/master_scan.csv"
+    try:
+        import sys as _sys
+        if "/app/tagaudit" not in _sys.path:
+            _sys.path.insert(0, "/app/tagaudit")
+        from core import config as _tagcfg  # type: ignore
+        cand = getattr(_tagcfg, "master_csv_path", None)
+        if cand:
+            p = str(cand)
+    except Exception:
+        pass
+    return p
+
+
+def _norm_cover_format(fmt):
+    """Normalise le format pochette (CSV = MIME 'image/jpeg') vers JPEG/PNG/BMP..."""
+    if not fmt:
+        return ""
+    f = fmt.strip().lower()
+    if "/" in f:
+        f = f.split("/", 1)[1]  # image/jpeg -> jpeg
+    f = f.replace("jpg", "jpeg")
+    return f.upper()  # JPEG / PNG / BMP / ...
+
+
+def diagnose_from_csv(csv_path=None, network_results=None, params=None,
+                      log=_default_log, stop_event=None, progress_cb=None):
+    """Volet B optimisé : diagnostic depuis master_scan.csv (embedded déjà
+    scanné) + check FS léger (os.listdir) pour les pochettes externes.
+
+    Renvoie la même structure que scan_local_folders. Ne re-scanne pas les
+    fichiers audio (pas de mutagen) : lit les colonnes cover_* du CSV.
     """
-    if not source_path or not os.path.isdir(source_path):
-        raise RuntimeError(f"Chemin introuvable : {source_path!r}")
+    import csv as _csv
+    if params is None:
+        params = _load_params()
+    embedded_max_bytes = params["embedded_max_bytes"]
+    external_autoresize_min = params["external_autoresize_min"]
+    external_autoresize_max = params["external_autoresize_max"]
+
+    csv_path = csv_path or _master_csv_default()
+    if not os.path.isfile(csv_path):
+        raise RuntimeError(f"master_scan.csv introuvable : {csv_path!r}")
+
+    # 1) Regrouper les lignes du CSV par dossier (directory)
+    by_dir = {}
+    with open(csv_path, "r", encoding="utf-8", newline="") as fh:
+        rd = _csv.DictReader(fh, delimiter=";")
+        for row in rd:
+            d = row.get("directory") or ""
+            if not d:
+                continue
+            by_dir.setdefault(d, []).append(row)
+
+    log(f"  ... {len(by_dir)} dossier(s) dans master_scan.csv")
+    results = []
+    done = 0
+    for dirpath, rows in by_dir.items():
+        if stop_event is not None and stop_event.is_set():
+            log("  ... diagnostic CSV interrompu par l'utilisateur.")
+            break
+        done += 1
+        if progress_cb is not None and done % 25 == 0:
+            progress_cb(done, len(by_dir))
+
+        entry = {"folder": dirpath, "issues": [], "notes": [],
+                 "tracks_checked": len(rows)}
+
+        # -- Embedded (depuis CSV) --
+        md5s = set()
+        fmt_reported = False
+        size_reported = False
+        for row in rows:
+            has = (row.get("has_cover") or "").strip().lower()
+            if has not in ("yes", "true", "1"):
+                continue
+            cfmt = _norm_cover_format(row.get("cover_format"))
+            try:
+                csize = int(float(row.get("cover_size") or 0))
+            except (TypeError, ValueError):
+                csize = 0
+            cmd5 = (row.get("cover_md5") or "").strip()
+            if cmd5:
+                md5s.add(cmd5)
+            if cfmt and cfmt not in ("JPEG", "PNG") and not fmt_reported:
+                entry["issues"].append(
+                    f"Pochette intégrée au format {cfmt} détectée : BluOS n'accepte "
+                    f"que le JPEG et le PNG en pochette intégrée."
+                )
+                fmt_reported = True
+            if csize >= embedded_max_bytes and not size_reported:
+                entry["issues"].append(
+                    f"Pochette intégrée de {csize / 1024:.0f} Ko : au-delà de 600 Ko, "
+                    f"BluOS n'indexe pas la pochette intégrée."
+                )
+                size_reported = True
+        if len(md5s) > 1:
+            entry["issues"].append(
+                f"Les pochettes intégrées diffèrent d'une piste à l'autre "
+                f"({len(md5s)} images différentes) : BluOS attend la même image "
+                f"sur toutes les pistes d'un album."
+            )
+
+        # -- Externe (check FS léger : os.listdir une fois, pas de mutagen) --
+        external_found = None
+        try:
+            names = os.listdir(dirpath)
+        except OSError:
+            names = []
+        lower_files = {n.lower(): n for n in names}
+        for candidate in ("folder.bmp", "cover.bmp"):
+            if candidate in lower_files:
+                entry["issues"].append(
+                    f"« {lower_files[candidate]} » est au format BMP : BluOS ne "
+                    f"recherche que .jpg/.jpeg/.png pour la pochette de dossier."
+                )
+        for name in VALID_EXTERNAL_NAMES:
+            if name in lower_files:
+                external_found = lower_files[name]
+                break
+        if external_found:
+            fp = os.path.join(dirpath, external_found)
+            try:
+                size = os.path.getsize(fp)
+            except OSError:
+                size = None
+            if size is not None:
+                entry["external_art_file"] = external_found
+                entry["external_art_size"] = size
+                if size >= external_autoresize_max:
+                    entry["issues"].append(
+                        f"« {external_found} » pèse {size / 1024 / 1024:.1f} Mo (≥ 4 Mo) : "
+                        f"trop lourd pour BluOS, même avec « Optimiser » activé."
+                    )
+                elif size >= external_autoresize_min:
+                    entry["notes"].append(
+                        f"« {external_found} » pèse {size / 1024:.0f} Ko (600 Ko-4 Mo) : "
+                        f"redimensionné auto SI « Optimiser » activé, sinon non affiché."
+                    )
+
+        # -- Aucune pochette du tout --
+        if not md5s and not external_found:
+            entry["issues"].append(
+                "Aucune pochette trouvée : ni folder.jpg/cover.jpg, ni pochette "
+                "intégrée détectée dans le scan."
+            )
+
+        if entry["issues"] or entry["notes"]:
+            results.append(entry)
+
+    if network_results:
+        results = cross_reference(network_results, results)
+    log(f"  ... {len(results)} dossier(s) avec un diagnostic (via CSV).")
+    return results
+
+
+def diagnose_library(source_path=None, network_results=None, log=_default_log,
+                     stop_event=None, progress_cb=None, use_csv=None,
+                     csv_path=None):
+    """Volet B : diagnostique la bibliothèque. Renvoie la liste des dossiers
+    avec un problème (issues/notes). Croise avec network_results si fourni.
+
+    Lot 4 : bascule automatiquement sur master_scan.csv s'il existe (rapide,
+    embedded déjà scanné + check FS léger pour l'externe). Fallback os.walk
+    si pas de CSV ou use_csv=False.
+    """
     params = _load_params()
-    log(f"Scan du dossier local '{source_path}'...")
+    the_csv = csv_path or _master_csv_default()
+    csv_ok = os.path.isfile(the_csv)
+
+    # Décision CSV vs os.walk
+    if use_csv is None:
+        use_csv = csv_ok
+    if use_csv and csv_ok:
+        log(f"Diagnostic via master_scan.csv : {the_csv}")
+        return diagnose_from_csv(csv_path=the_csv, network_results=network_results,
+                                 params=params, log=log, stop_event=stop_event,
+                                 progress_cb=progress_cb)
+
+    # Fallback : scan filesystem complet (ancien comportement)
+    if not source_path or not os.path.isdir(source_path):
+        raise RuntimeError(f"Chemin introuvable et pas de CSV : {source_path!r}")
+    log(f"Scan du dossier local '{source_path}' (os.walk, pas de CSV)...")
     folder_results = scan_local_folders(source_path, params, log=log,
                                         stop_event=stop_event, progress_cb=progress_cb)
     if network_results:
