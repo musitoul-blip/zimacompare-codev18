@@ -634,6 +634,18 @@ def _norm_cover_format(fmt):
     return f.upper()  # JPEG / PNG / BMP / ...
 
 
+def _win_path(linux_path):
+    """Convertit un chemin Linux -> Windows a l'IDENTIQUE du rapport d'audit ZimaTag.
+    Reutilise ExcelExporter._translate_path_for_windows (meme source que html_export._win).
+    Fallback : simple remplacement des separateurs si l'import echoue.
+    """
+    try:
+        from tagaudit.export.excel_export import ExcelExporter
+        return ExcelExporter._translate_path_for_windows(str(linux_path))
+    except Exception:
+        return str(linux_path or "").replace("/", "\\")
+
+
 def diagnose_from_csv(csv_path=None, network_results=None, params=None,
                       log=_default_log, stop_event=None, progress_cb=None):
     """Volet B optimisé : diagnostic depuis master_scan.csv (embedded déjà
@@ -674,8 +686,10 @@ def diagnose_from_csv(csv_path=None, network_results=None, params=None,
         if progress_cb is not None and done % 25 == 0:
             progress_cb(done, len(by_dir))
 
-        entry = {"folder": dirpath, "issues": [], "notes": [],
-                 "tracks_checked": len(rows)}
+        entry = {"folder": dirpath, "win_path": _win_path(dirpath),
+                 "issues": [], "notes": [], "tracks_checked": len(rows),
+                 "cover_format": "", "cover_size": 0, "cover_width": 0,
+                 "cover_height": 0, "cover_count": 0, "distinct_covers": 0}
 
         # -- Embedded (depuis CSV) --
         md5s = set()
@@ -693,6 +707,19 @@ def diagnose_from_csv(csv_path=None, network_results=None, params=None,
             cmd5 = (row.get("cover_md5") or "").strip()
             if cmd5:
                 md5s.add(cmd5)
+            # Metadonnees pochette (1re piste avec cover fait foi pour l'affichage)
+            if not entry["cover_format"] and cfmt:
+                entry["cover_format"] = cfmt
+                entry["cover_size"] = csize
+                try:
+                    entry["cover_width"] = int(float(row.get("cover_width") or 0))
+                    entry["cover_height"] = int(float(row.get("cover_height") or 0))
+                except (TypeError, ValueError):
+                    pass
+                try:
+                    entry["cover_count"] = int(float(row.get("cover_count") or 0))
+                except (TypeError, ValueError):
+                    pass
             if cfmt and cfmt not in ("JPEG", "PNG") and not fmt_reported:
                 entry["issues"].append(
                     f"Pochette intégrée au format {cfmt} détectée : BluOS n'accepte "
@@ -705,6 +732,7 @@ def diagnose_from_csv(csv_path=None, network_results=None, params=None,
                     f"BluOS n'indexe pas la pochette intégrée."
                 )
                 size_reported = True
+        entry["distinct_covers"] = len(md5s)
         if len(md5s) > 1:
             entry["issues"].append(
                 f"Les pochettes intégrées diffèrent d'une piste à l'autre "
