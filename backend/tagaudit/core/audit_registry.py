@@ -131,6 +131,7 @@ _SEED_PARAMS = [
 # Tuples : (param_key, value, label, unit)
 _SEED_BLUOS = [
     ("bluos_ip", "192.168.1.121", "IP du lecteur Bluesound (Node)", ""),
+    ("bluos_source_path", "/disks/HDD-Storage1/Media/GoogleMusic", "Dossier local a diagnostiquer (volet B)", ""),
     ("bluos_port", "11000", "Port API BluOS", ""),
     ("bluos_timeout", "10", "Timeout requête BluOS", "s"),
     ("embedded_max_kb", "600", "Pochette embarquée : taille max", "Ko"),
