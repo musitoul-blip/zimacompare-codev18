@@ -19,6 +19,22 @@ def _c(cid, label, status, detail=""):
     return {"id": cid, "label": label, "status": status, "detail": detail}
 
 
+def _master_csv_for_selfcheck():
+    """Chemin master_scan.csv via l'instance tagaudit.core.config, fallback en dur (T1)."""
+    p = "/app_data/tagaudit/data/master_scan.csv"
+    try:
+        import sys as _sys
+        if "/app/tagaudit" not in _sys.path:
+            _sys.path.insert(0, "/app/tagaudit")
+        from core import config as _tagcfg
+        cand = getattr(_tagcfg, "master_csv_path", None)
+        if cand:
+            p = str(cand)
+    except Exception:
+        pass
+    return p
+
+
 def run_selfcheck():
     checks = []
 
@@ -91,7 +107,7 @@ def run_selfcheck():
         cand = {
             "config.json":     Path(APP_DATA_ROOT) / "config.json",
             "rclone.conf":     Path("/config/rclone/rclone.conf"),
-            "master_scan.csv": Path("/app_data/tagaudit/data/master_scan.csv"),
+            "master_scan.csv": Path(_master_csv_for_selfcheck()),
         }
         missing = [n for n, p in cand.items() if not p.exists()]
         if not os.environ.get("RCLONE_RC_PASS"):
