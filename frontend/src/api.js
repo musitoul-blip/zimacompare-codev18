@@ -62,10 +62,6 @@ export const api = {
   npmInfo:       (name, installed) => req('GET',
     `/npm-info?package=${encodeURIComponent(name)}${installed ? `&installed=${encodeURIComponent(installed)}` : ''}`),
   npmAudit:      (deps)   => req('POST', '/npm-audit', { deps }),
-  installers:        ()             => req('GET',    '/installers'),
-  installerBuild:    (body)         => req('POST',   '/installers/build', body),
-  installerDelete:   (name)         => req('DELETE', `/installers/${encodeURIComponent(name)}`),
-  installerUrl:      (name)         => `/api/installers/${encodeURIComponent(name)}`,
   exportContext:     ()             => req('GET',    '/export-context'),
   // NEW v3.8
   smartDevices:      ()             => req('GET',    '/smart/devices'),

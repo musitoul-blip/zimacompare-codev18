@@ -368,101 +368,6 @@ function Vulnerabilities({ advs }) {
 }
 
 
-function InstallerPanel() {
-  const [list, setList] = useState([])
-  const [building, setBuilding] = useState(false)
-  const [includeHistory, setIncludeHistory] = useState(true)
-  const [msg, setMsg] = useState(null)
-  const refresh = () => api.installers().then(setList).catch(() => setList([]))
-  useEffect(() => { refresh() }, [])
-  const notify = (text, ok=true) => { setMsg({ text, ok }); setTimeout(() => setMsg(null), 5000) }
-  async function build() {
-    setBuilding(true)
-    try {
-      const r = await api.installerBuild({ include_paths_history: includeHistory })
-      notify(`✓ Paquet créé : ${r.name} (${fmtSize(r.size)})`, true)
-      await refresh(); window.location.href = r.url
-    } catch(e) { notify('Échec : ' + e.message, false) }
-    finally { setBuilding(false) }
-  }
-  async function remove(name) {
-    if (!confirm(`Supprimer ${name} ?`)) return
-    try { await api.installerDelete(name); notify(`✓ Supprimé : ${name}`); await refresh() }
-    catch(e) { notify('Échec : ' + e.message, false) }
-  }
-  return (
-    <div className="card" style={{ padding:0, overflow:'hidden' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:8,
-                     padding:'10px 14px', borderBottom:'1px solid var(--border)', flexWrap:'wrap' }}>
-        <span style={{ fontWeight:600, fontSize:13 }}>📦 Paquet d'installation (export complet)</span>
-        <span style={{ flex:1 }} />
-        <button className="btn-ghost" onClick={refresh} style={{ fontSize:12, padding:'4px 10px' }}>↻ Actualiser</button>
-      </div>
-      <div style={{ padding:14 }}>
-        <p style={{ fontSize:12, color:'var(--muted)', marginBottom:12, lineHeight:1.5 }}>
-          Génère un ZIP autonome contenant tout le code source, le
-          docker-compose, INSTALL.md et 3 scripts bash.
-        </p>
-        <div style={{ display:'flex', gap:12, marginBottom:12, alignItems:'center', flexWrap:'wrap' }}>
-          <label style={{ display:'flex', alignItems:'center', gap:6,
-            textTransform:'none', letterSpacing:0, fontSize:12, color:'var(--text)', cursor:'pointer' }}>
-            <input type="checkbox" checked={includeHistory}
-              onChange={e => setIncludeHistory(e.target.checked)}
-              style={{ accentColor:'var(--accent)' }} />
-            Inclure l'historique des paths
-          </label>
-        </div>
-        <button className="btn-primary" onClick={build} disabled={building}>
-          {building ? '⟳ Génération…' : '📥 Générer & télécharger le paquet'}
-        </button>
-        {msg && (
-          <div style={{ marginTop:10, padding:'8px 12px', borderRadius:6,
-            background: msg.ok ? '#14532d' : '#450a0a',
-            color: msg.ok ? 'var(--success)' : 'var(--danger)', fontSize: 12 }}>{msg.text}</div>
-        )}
-        {list.length > 0 && (
-          <>
-            <h4 style={{ fontSize:11, color:'var(--muted)', textTransform:'uppercase',
-                         letterSpacing:'.08em', marginTop:18, marginBottom:8 }}>
-              Paquets générés ({list.length})
-            </h4>
-            <div style={{ overflowX:'auto' }}>
-              <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse', minWidth:400 }}>
-                <thead><tr>
-                  <th style={{ textAlign:'left', padding:'6px 10px', fontSize:10, color:'var(--muted)' }}>Nom</th>
-                  <th style={{ textAlign:'right', padding:'6px 10px', fontSize:10, color:'var(--muted)' }}>Taille</th>
-                  <th style={{ textAlign:'left', padding:'6px 10px', fontSize:10, color:'var(--muted)' }}>Date</th>
-                  <th></th>
-                </tr></thead>
-                <tbody>
-                  {list.map(f => (
-                    <tr key={f.name} style={{ borderTop:'1px solid var(--border)' }}>
-                      <td className="mono" style={{ padding:'8px 10px', wordBreak:'break-all' }}>{f.name}</td>
-                      <td className="mono" style={{ padding:'8px 10px', textAlign:'right',
-                                                     color:'var(--muted)' }}>{fmtSize(f.size)}</td>
-                      <td className="mono" style={{ padding:'8px 10px', color:'var(--muted)' }}>
-                        {f.date.replace('T', ' ')}
-                      </td>
-                      <td style={{ padding:'4px 10px', textAlign:'right', whiteSpace:'nowrap' }}>
-                        <a href={api.installerUrl(f.name)} className="btn-ghost"
-                           style={{ fontSize:11, padding:'3px 8px', marginRight:4, textDecoration:'none' }}
-                           download>⬇</a>
-                        <button onClick={() => remove(f.name)} className="btn-ghost"
-                                style={{ fontSize:11, padding:'3px 8px', color:'var(--danger)' }}>🗑</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-
-
 function ContextExportPanel() {
   const [loading, setLoading] = useState(false)
   const [data,    setData]    = useState(null)
@@ -498,7 +403,6 @@ function ContextExportPanel() {
                        fontSize:11, color:'var(--muted)', borderLeft:'3px solid var(--accent)' }}>
           <strong style={{ color:'var(--text)' }}>Pour reprendre une nouvelle conversation, partage :</strong>
           <ol style={{ margin:'6px 0 0 18px', padding:0 }}>
-            <li>Le ZIP <code>zimacompare-installer-*.zip</code> le plus récent</li>
             <li>Ce fichier <code>zimacompare-context-*.json</code></li>
           </ol>
         </div>
@@ -527,7 +431,6 @@ export default function TabSystem() {
       <LogConsole />
       <DepsTablePython />
       <DepsTableNpm />
-      <InstallerPanel />
       <ContextExportPanel />
     </div>
   )

@@ -35,7 +35,6 @@ from config import (
     # v3.13 — liste des fichiers ignorés
     IGNORED_FILES_JSON,
 )
-from installer import build_installer_zip, list_installers
 from scanner import (compute_scan_stats, load_scan_results, start_scan, stop_scan,
                      diff_report, diff_report_csv,
                      start_targeted_check, load_targeted_report, TARGETED_CSV,
@@ -647,56 +646,6 @@ def api_npm_audit(body: NpmAuditRequest):
         return {"status": "error", "error": str(e), "advisories": {}}
 
 
-# ── Installer ────────────────────────────────────────────────────────────
-class InstallerRequest(BaseModel):
-    include_paths_history: bool = True
-
-
-@app.get("/api/installers")
-def api_installers(): return list_installers()
-
-
-@app.post("/api/installers/build")
-def api_installer_build(body: InstallerRequest = InstallerRequest()):
-    # Recherche du docker-compose réel, par ordre de préférence. Le compose
-    # qui tourne vraiment est celui géré par CasaOS — on le cherche en premier.
-    candidates = [
-        Path("/var/lib/casaos/apps/zimacompare/docker-compose.yml"),
-        Path("/var/lib/casaos/apps/zimacompare/docker-compose.yaml"),
-        Path("/DATA/AppData/zimacompare-v3/docker-compose.yaml"),
-        Path("/app/../docker-compose.yaml"),
-    ]
-    compose = next((c.resolve() for c in candidates if c.exists()), None)
-    out_path = build_installer_zip(
-        include_paths_history=body.include_paths_history,
-        docker_compose_path=compose,
-    )
-    return {"name": out_path.name, "size": out_path.stat().st_size,
-            "path": str(out_path), "url": f"/api/installers/{out_path.name}"}
-
-
-@app.get("/api/installers/{name}")
-def api_installer_download(name: str):
-    if not name.startswith("zimacompare-installer-") or not name.endswith(".zip"):
-        raise HTTPException(400, "Nom de fichier invalide")
-    if "/" in name or "\\" in name or ".." in name:
-        raise HTTPException(400, "Nom de fichier invalide")
-    path = APP_DATA_ROOT / name
-    if not path.exists() or not path.is_file():
-        raise HTTPException(404, "Installer introuvable")
-    return FileResponse(path, filename=name, media_type="application/zip")
-
-
-@app.delete("/api/installers/{name}")
-def api_installer_delete(name: str):
-    if not name.startswith("zimacompare-installer-") or not name.endswith(".zip"):
-        raise HTTPException(400, "Nom de fichier invalide")
-    if "/" in name or "\\" in name or ".." in name:
-        raise HTTPException(400, "Nom de fichier invalide")
-    path = APP_DATA_ROOT / name
-    if not path.exists(): raise HTTPException(404, "Installer introuvable")
-    path.unlink()
-    return {"status": "deleted", "name": name}
 
 
 # ── NEW v3.8 — SMART ─────────────────────────────────────────────────────
@@ -1004,7 +953,6 @@ def api_export_context():
         "paths_history": history,
         "data_files":    data_files,
         "backend_files": list(backend_inventory.keys()),
-        "installers":    list_installers(),
         "recent_logs":   recent_logs,
         "smart":         smart_summary,
         "selfcheck":     selfcheck_summary,
