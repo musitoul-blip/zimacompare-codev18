@@ -480,45 +480,53 @@ def start_rclone_sync(source: str, dest: str, *, dry_run: bool = True,
     with _state_lock:
         if _state.rclone_state == "RUNNING":
             raise RcloneError("Une synchro rclone est déjà en cours.")
+        _state.rclone_state = "RUNNING"  # sentinelle RUNNING (anti-TOCTOU)
 
-    # Normalisation de la destination.
-    dest = dest.strip()
-    if not dest:
-        raise RcloneError("Destination vide.")
-    if ":" not in dest:
-        # Pas de remote explicite → sous-dossier de pcloud:
-        dest = RC_REMOTE + dest.lstrip("/")
+    try:
 
-    if not source or not source.startswith("/"):
-        raise RcloneError(f"Source invalide : {source!r}")
+        # Normalisation de la destination.
+        dest = dest.strip()
+        if not dest:
+            raise RcloneError("Destination vide.")
+        if ":" not in dest:
+            # Pas de remote explicite → sous-dossier de pcloud:
+            dest = RC_REMOTE + dest.lstrip("/")
 
-    # Le démon doit répondre avant qu'on lance quoi que ce soit.
-    rc_ping()
+        if not source or not source.startswith("/"):
+            raise RcloneError(f"Source invalide : {source!r}")
 
-    operation = "sync" if mirror else "copy"
-    command   = "sync/sync" if mirror else "sync/copy"
+        # Le démon doit répondre avant qu'on lance quoi que ce soit.
+        rc_ping()
 
-    # SizeOnly : rclone compare les fichiers sur la SEULE taille, en ignorant
-    # la date de modification. Indispensable avec pCloud, qui ne conserve pas
-    # les dates à l'identique : sans ça, rclone signalerait des centaines de
-    # fichiers « différents » dont seule la date varie (contenu identique).
-    # Cela aligne le mode complet sur la logique de ZimaCompare (le contenu
-    # prime, pas la date).
-    payload = {
-        "srcFs":  source,
-        "dstFs":  dest,
-        "_async": True,                    # rclone renvoie un jobid immédiatement
-        "_config": {"DryRun": bool(dry_run), "SizeOnly": True},
-    }
+        operation = "sync" if mirror else "copy"
+        command   = "sync/sync" if mirror else "sync/copy"
 
-    logger.info(f"[RCLONE] Démarrage {operation.upper()} "
-                f"{'(DRY-RUN) ' if dry_run else ''}"
-                f"source={source} dest={dest} — comparaison sur la taille")
+        # SizeOnly : rclone compare les fichiers sur la SEULE taille, en ignorant
+        # la date de modification. Indispensable avec pCloud, qui ne conserve pas
+        # les dates à l'identique : sans ça, rclone signalerait des centaines de
+        # fichiers « différents » dont seule la date varie (contenu identique).
+        # Cela aligne le mode complet sur la logique de ZimaCompare (le contenu
+        # prime, pas la date).
+        payload = {
+            "srcFs":  source,
+            "dstFs":  dest,
+            "_async": True,                    # rclone renvoie un jobid immédiatement
+            "_config": {"DryRun": bool(dry_run), "SizeOnly": True},
+        }
 
-    result = _rc_call(command, payload)
-    job_id = result.get("jobid")
-    if not job_id:
-        raise RcloneError(f"L'API rc n'a pas renvoyé de jobid : {result}")
+        logger.info(f"[RCLONE] Démarrage {operation.upper()} "
+                    f"{'(DRY-RUN) ' if dry_run else ''}"
+                    f"source={source} dest={dest} — comparaison sur la taille")
+
+        result = _rc_call(command, payload)
+        job_id = result.get("jobid")
+        if not job_id:
+            raise RcloneError(f"L'API rc n'a pas renvoyé de jobid : {result}")
+
+    except Exception:
+        with _state_lock:
+            _state.rclone_state = "IDLE"  # rollback si echec avant lancement
+        raise
 
     _stop_event.clear()
     now = datetime.now().isoformat(timespec="seconds")
