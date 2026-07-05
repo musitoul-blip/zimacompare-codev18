@@ -53,6 +53,8 @@ class M4AParser:
         elif size == 0:
             size = f.seek(0, 2) - f.tell() + 8
             f.seek(-8, 1)
+        if size < 8:
+            return None  # atom corrompu (garde robustesse m4a)
         return (size, atype, f.tell())
     
     def _parse_moov(self, f: BinaryIO, start: int, size: int):
@@ -120,6 +122,8 @@ class M4AParser:
                 break
             dsize, dtype, ddstart = datom
             if dtype == b'data':
+                if dsize < 16:
+                    break  # data atom tronque (garde robustesse m4a)
                 f.read(8)  # type + locale
                 val = f.read(dsize - 16)
                 
