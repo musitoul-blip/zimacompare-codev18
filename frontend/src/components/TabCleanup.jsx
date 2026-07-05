@@ -274,7 +274,7 @@ export default function TabCleanup({ status }) {
         <div style={{ display:'grid',
                        gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))', gap:16,
                        alignItems:'end' }}>
-          <PathSelector value={root} onChange={setRoot} options={paths} history={history} />
+          <PathSelector value={root} onChange={setRoot} history={history} />
           <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
             {!isActive ? (
               <button className="btn-primary" onClick={doScan} disabled={busy || !root}>

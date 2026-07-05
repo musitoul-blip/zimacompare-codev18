@@ -163,7 +163,7 @@ export default function TabBluos({ status }) {
     catch (e) { setMsg('✗ ' + e.message) }
   }
 
-  const flagged = results ? results.network.filter(r => r.status !== 'ok') : []
+  const flagged = results?.network ? results.network.filter(r => r.status !== 'ok') : []
 
   return (
     <div>
@@ -221,7 +221,7 @@ export default function TabBluos({ status }) {
           <h3 style={{ fontSize: 15, marginTop: 0 }}>
             Albums fautifs {results.player && <span style={muted}>— {results.player.name} ({results.player.model})</span>}
           </h3>
-          <div style={{ ...muted, marginBottom: 8 }}>{flagged.length} album(s) sur {results.network.length} analyse(s)</div>
+          <div style={{ ...muted, marginBottom: 8 }}>{flagged.length} album(s) sur {results.network?.length || 0} analyse(s)</div>
           {flagged.length === 0 && <div style={{ color: 'var(--success)' }}>Aucun probleme detecte.</div>}
           {flagged.length > 0 && (
             <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>

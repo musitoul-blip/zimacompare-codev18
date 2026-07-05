@@ -10,17 +10,18 @@ function LogConsole() {
   const [paused,  setPaused]  = useState(false)
   const [filter,  setFilter]  = useState('')
   const [level,   setLevel]   = useState('ALL')
-  const bottomRef = useRef(null); const wsRef = useRef(null)
+  const bottomRef = useRef(null); const wsRef = useRef(null); const pausedRef = useRef(false)
 
   useEffect(() => {
     api.logsRecent(300).then(r => setLines(r.lines)).catch(() => {})
     wsRef.current = openWsLogs(line => {
-      if (!paused) setLines(prev => [...prev.slice(-1999), line])
+      if (!pausedRef.current) setLines(prev => [...prev.slice(-1999), line])
     })
     return () => wsRef.current?.close()
   }, [])
 
   useEffect(() => {
+    pausedRef.current = paused
     if (!paused && bottomRef.current) bottomRef.current.scrollIntoView({ behavior:'smooth' })
   }, [lines, paused])
 

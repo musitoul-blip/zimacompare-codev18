@@ -95,17 +95,18 @@ export default function ScanStats({ status }) {
   </div>
   if (!stats || !stats.total) return null
 
-  const totalDiff = stats.by_status.new + stats.by_status.different + stats.by_status.deleted
+  const _bs = stats.by_status || {}
+  const totalDiff = (_bs.new || 0) + (_bs.different || 0) + (_bs.deleted || 0)
 
-  const statusData = Object.entries(stats.by_status)
+  const statusData = Object.entries(stats.by_status || {})
     .filter(([_, v]) => v > 0)
     .map(([k, v]) => ({ name: STATUS_LABELS[k] || k, value: v, color: STATUS_COLORS[k] || '#9ca3af' }))
 
-  const bucketData = Object.entries(stats.size_buckets)
+  const bucketData = Object.entries(stats.size_buckets || {})
     .filter(([_, v]) => v > 0)
     .map(([k, v], i) => ({ name: k, value: v, color: BUCKET_COLORS[i % BUCKET_COLORS.length] }))
 
-  const extData = Object.entries(stats.by_extension).map(([ext, c]) => ({ name: '.' + ext, count: c }))
+  const extData = Object.entries(stats.by_extension || {}).map(([ext, c]) => ({ name: '.' + ext, count: c }))
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -168,10 +169,10 @@ export default function ScanStats({ status }) {
         </div>
       )}
 
-      {stats.biggest_diffs.length > 0 && (
+      {(stats.biggest_diffs || []).length > 0 && (
         <div>
           <h4 style={hLbl}>Top 10 plus gros écarts à synchroniser</h4>
-          <TopFilesTable rows={stats.biggest_diffs} />
+          <TopFilesTable rows={stats.biggest_diffs || []} />
         </div>
       )}
 

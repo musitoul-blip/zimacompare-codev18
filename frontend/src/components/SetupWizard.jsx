@@ -429,7 +429,7 @@ export default function SetupWizard({ onComplete }) {
             <div key={s} style={styles.stepDot(s === step, s < step)} />
           ))}
           <span style={{ fontSize: '12px', color: 'var(--muted)', marginLeft: '8px' }}>
-            Étape {Math.min(step, 3)} / 2
+            Étape {Math.min(step, 3)} / 3
           </span>
         </div>
 
