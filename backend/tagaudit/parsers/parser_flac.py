@@ -119,10 +119,16 @@ class FLACParser:
         try:
             pos = 0
             pos += 4  # type
+            if pos + 4 > len(data):
+                return  # garde robustesse flac (mime_len hors bornes)
             mime_len = struct.unpack('>I', data[pos:pos+4])[0]
             pos += 4 + mime_len
+            if pos + 4 > len(data):
+                return  # garde robustesse flac (desc_len hors bornes)
             desc_len = struct.unpack('>I', data[pos:pos+4])[0]
             pos += 4 + desc_len + 16  # +16 for dimensions
+            if pos + 4 > len(data):
+                return  # garde robustesse flac (pic_len hors bornes)
             pic_len = struct.unpack('>I', data[pos:pos+4])[0]
             pos += 4
             if pos + pic_len <= len(data):
