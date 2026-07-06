@@ -66,7 +66,7 @@ export default function TabZimatag({ status }) {
     pollRef.current = setInterval(async () => {
       n += 1; let st = 'IDLE'
       try { st = (await (await fetch('/api/status')).json()).app_state } catch (e) { return }
-      if (st !== 'SCANNING' || n > 4000) {
+      if (st !== 'SCANNING' || n > 3000) {
         clearInterval(pollRef.current); pollRef.current = null
         await loadResult(); if (autoXls) await downloadExcel()
       }

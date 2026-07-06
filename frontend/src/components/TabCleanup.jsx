@@ -171,7 +171,7 @@ export default function TabCleanup({ status }) {
       n += 1
       let st = 'IDLE'
       try { st = (await (await fetch('/api/status')).json()).app_state } catch (e) { return }
-      if (!['SCANNING', 'COMPARING', 'SYNCING', 'VERIFYING'].includes(st) || n > 4000) {
+      if (!['SCANNING', 'COMPARING', 'SYNCING', 'VERIFYING'].includes(st) || n > 3000) {
         clearInterval(pollRef.current); pollRef.current = null
         api.cleanPlan().then(setPlan).catch(() => {})
       }
