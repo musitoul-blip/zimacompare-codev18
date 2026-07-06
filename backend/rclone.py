@@ -1061,3 +1061,47 @@ def fetch_remote_hashes(target_path, hash_type="sha1",
             except Exception:
                 pass
     return result
+
+
+def inventory_remote(target_path, cap=1_000_000):
+    """Inventaire rapide d'un chemin pCloud via l'API rc (operations/list
+    recursif, filesOnly) : agrege count + bytes par extension SANS passer par
+    le montage FUSE (evite les os.stat un par un, ~150x plus rapide).
+
+    Retourne un dict {ext_count, ext_bytes, total_files, total_bytes,
+    truncated} ou None si le chemin n'est pas sous pCloud / en cas d'echec
+    (le caller doit alors retomber sur os.walk).
+    """
+    m = map_mount_to_remote(target_path)
+    if m is None:
+        return None
+    fs, remote = m
+    try:
+        out = _rc_call("operations/list",
+                       {"fs": fs, "remote": remote,
+                        "opt": {"recurse": True, "filesOnly": True}},
+                       timeout=_HTTP_TIMEOUT_HASH)
+    except RcloneError as e:
+        logger.warning(f"[INVENTORY] operations/list a echoue ({e}) -> fallback os.walk")
+        return None
+    items = out.get("list") or []
+    ext_count, ext_bytes = {}, {}
+    total_files = total_bytes = 0
+    truncated = False
+    for it in items:
+        if total_files >= cap:
+            truncated = True
+            break
+        name = it.get("Name", "") or ""
+        dot = name.rfind(".")
+        ext = name[dot:].lower() if dot > 0 else "(sans extension)"
+        sz = it.get("Size", 0)
+        if not isinstance(sz, int) or sz < 0:
+            sz = 0
+        ext_count[ext] = ext_count.get(ext, 0) + 1
+        ext_bytes[ext] = ext_bytes.get(ext, 0) + sz
+        total_files += 1
+        total_bytes += sz
+    return {"ext_count": ext_count, "ext_bytes": ext_bytes,
+            "total_files": total_files, "total_bytes": total_bytes,
+            "truncated": truncated}

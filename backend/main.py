@@ -1176,27 +1176,37 @@ def api_file_types(path: str = Query(..., min_length=1)):
     if not st["exists"] or not st["is_dir"]:
         raise HTTPException(404, f"Dossier introuvable : {path}")
     CAP = 1_000_000
-    ext_count = {}
-    ext_bytes = {}
-    total_files = 0
-    total_bytes = 0
-    truncated = False
-    for root, dirs, files in os.walk(path, onerror=lambda e: None):
-        for fn in files:
-            if total_files >= CAP:
-                truncated = True
+    # pCloud : inventaire rapide via rclone rc (evite le montage FUSE lent /
+    # le Gateway Time-out). None si non-pCloud ou echec -> fallback os.walk.
+    _inv = rclone.inventory_remote(path)
+    if _inv is not None:
+        ext_count = _inv["ext_count"]
+        ext_bytes = _inv["ext_bytes"]
+        total_files = _inv["total_files"]
+        total_bytes = _inv["total_bytes"]
+        truncated = _inv["truncated"]
+    else:
+        ext_count = {}
+        ext_bytes = {}
+        total_files = 0
+        total_bytes = 0
+        truncated = False
+        for root, dirs, files in os.walk(path, onerror=lambda e: None):
+            for fn in files:
+                if total_files >= CAP:
+                    truncated = True
+                    break
+                ext = os.path.splitext(fn)[1].lower() or "(sans extension)"
+                try:
+                    sz = os.stat(os.path.join(root, fn)).st_size
+                except Exception:
+                    sz = 0
+                ext_count[ext] = ext_count.get(ext, 0) + 1
+                ext_bytes[ext] = ext_bytes.get(ext, 0) + sz
+                total_files += 1
+                total_bytes += sz
+            if truncated:
                 break
-            ext = os.path.splitext(fn)[1].lower() or "(sans extension)"
-            try:
-                sz = os.stat(os.path.join(root, fn)).st_size
-            except Exception:
-                sz = 0
-            ext_count[ext] = ext_count.get(ext, 0) + 1
-            ext_bytes[ext] = ext_bytes.get(ext, 0) + sz
-            total_files += 1
-            total_bytes += sz
-        if truncated:
-            break
     extensions = sorted(
         [{"ext": e, "count": ext_count[e], "bytes": ext_bytes[e],
           "category": _ft_category(e)} for e in ext_count],
