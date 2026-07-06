@@ -1012,7 +1012,8 @@ def _list_remote(fs, remote, opt, timeout=_HTTP_TIMEOUT_HASH):
 
 
 def fetch_remote_hashes(target_path, hash_type="sha1",
-                        progress_cb=None, stop_event=None) -> dict:
+                        progress_cb=None, stop_event=None,
+                        name_filter="") -> dict:
     """Empreintes serveur (SHA1 par défaut) de tous les fichiers sous
     `target_path` (montage pCloud), via l'API rc, SANS télécharger.
     Retourne {rel: hash}, rel relatif à `target_path` (aligné sur le scanner)."""
@@ -1041,7 +1042,11 @@ def fetch_remote_hashes(target_path, hash_type="sha1",
             result[rel] = h or "error"
 
     # fichiers directement à la racine de la cible
-    _ingest(_list_remote(fs, subpath, files_opt, _HTTP_TIMEOUT_LIST))
+    _nf_cloud = (name_filter or "").strip().lower()
+    # fichiers directement a la racine : ignores si un filtre de dossier est actif
+    # (coherent avec _scandir_recursive qui ne retient au 1er niveau que les noms filtres)
+    if not _nf_cloud:
+        _ingest(_list_remote(fs, subpath, files_opt, _HTTP_TIMEOUT_LIST))
 
     # dossiers de premier niveau (un appel récursif chacun)
     top = _rc_call("operations/list",
@@ -1053,6 +1058,9 @@ def fetch_remote_hashes(target_path, hash_type="sha1",
     for i, d in enumerate(dirs):
         if stop_event is not None and stop_event.is_set():
             raise RcloneError("Récupération des empreintes interrompue.")
+        # filtre nom (sous-chaine, insensible casse) = meme critere que le scan source
+        if _nf_cloud and _nf_cloud not in d.lower():
+            continue
         sub = f"{subpath}/{d}" if subpath else d
         _ingest(_list_remote(fs, sub, recurse_opt))
         if progress_cb:

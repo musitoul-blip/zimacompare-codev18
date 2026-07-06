@@ -248,7 +248,7 @@ def _run_scan(source: str, target: str, method: str, chunk_mb: int, name_filter:
                     update_state(current_file=f"Empreintes cloud : {done}/{total_dirs} dossiers ({n_hashes} fichiers)", progress=int(done * 100 / total_dirs) if total_dirs else 0)
                 _th0 = time.monotonic()
                 try:
-                    target_hashes = fetch_remote_hashes(target, "sha1", _hash_progress, _stop_event)
+                    target_hashes = fetch_remote_hashes(target, "sha1", _hash_progress, _stop_event, name_filter=_nf)
                 except Exception as e:
                     logger.error(f"[SCAN] Empreintes cloud : {e}")
                     update_state(app_state=AppState.ERROR, error=f"Empreintes cloud : {e}")
